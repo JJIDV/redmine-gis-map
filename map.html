@@ -18,10 +18,8 @@
     const lon = parseFloat(params.get('lon'));
 
     const map = L.map('map').setView([lat, lon], 18);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 19
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
     }).addTo(map);
     L.marker([lat, lon]).addTo(map);
   </script>
