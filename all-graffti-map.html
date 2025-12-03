@@ -30,51 +30,54 @@
   <div id="map"></div>
 
   <script>
-    // MapServer sluoksnio url, turi baigtis /MapServer/0
+    // ČIA ĮRAŠYK SAVO LAYERIO URL, kuris baigiasi /MapServer/0
     const mapServerLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Graf2/MapServer/0";
 
-    // pradinis centras ir mastelis
+    // Pradinis žemėlapio centras (Vilnius)
     const map = L.map("map").setView([54.6872, 25.2797], 12);
 
-    // osm fonas
+    // OSM fonas
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 20,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // paprasta query į MapServer kaip geojson, be filtrų
+    // Esri JSON užklausa (ne geojson!)
     const queryUrl =
       mapServerLayerUrl +
       "/query" +
       "?where=1=1" +
       "&outFields=*" +
-      "&outSR=4326" +
-      "&f=geojson";
+      "&returnGeometry=true" +
+      "&outSR=4326" +       // konvertuoja į WGS84 (lon/lat)
+      "&f=pjson";
 
     fetch(queryUrl)
       .then((res) => res.json())
-      .then((geojson) => {
-        addMarkers(geojson);
+      .then((data) => {
+        addMarkersFromEsriJson(data);
       })
       .catch((err) => {
-        console.error("klaida skaitant servisą:", err);
+        console.error("Klaida skaitant servisą:", err);
       });
 
-    function addMarkers(geojson) {
-      const markers = [];
-
-      if (!geojson.features) {
-        console.error("geojson neturi features:", geojson);
+    function addMarkersFromEsriJson(data) {
+      if (!data.features || !Array.isArray(data.features)) {
+        console.error("Nėra features lauko atsakyme:", data);
         return;
       }
 
-      geojson.features.forEach((feat) => {
-        if (!feat.geometry || feat.geometry.type !== "Point") return;
+      const markers = [];
 
-        const coords = feat.geometry.coordinates; // [lon, lat]
-        const lon = coords[0];
-        const lat = coords[1];
+      data.features.forEach((f) => {
+        const geom = f.geometry;
+        if (!geom || typeof geom.x !== "number" || typeof geom.y !== "number") {
+          return;
+        }
+
+        const lon = geom.x;
+        const lat = geom.y;
 
         const marker = L.marker([lat, lon]);
 
@@ -93,6 +96,8 @@
       if (markers.length > 0) {
         const group = L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.1));
+      } else {
+        console.warn("features masyve nėra taškų su geometrija.");
       }
     }
   </script>
