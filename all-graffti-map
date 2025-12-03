@@ -1,44 +1,264 @@
 <!DOCTYPE html>
-<html>
+<html lang="lt">
 <head>
   <meta charset="utf-8" />
-  <title>Grafiti žemėlapis</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <title>Grafiti pranešimai</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1j7kGStb6g2nL1qHg2PjH8zWLMKXgB3p3f2kPGzU="
+    crossorigin=""
+  ></script>
+
+  <!-- (nebūtina) klasteriai, jei daug taškų -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+  />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+  />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
   <style>
-    html, body, #map { height: 100%; margin: 0; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+    .layout {
+      display: flex;
+      height: 100%;
+    }
+    #map {
+      flex: 2;
+    }
+    #table-container {
+      flex: 1;
+      border-left: 1px solid #ccc;
+      overflow: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      background: #f5f5f5;
+      z-index: 1;
+    }
+    th, td {
+      border-bottom: 1px solid #eee;
+      padding: 4px 6px;
+      text-align: left;
+    }
+    tr:hover {
+      background: #f0f8ff;
+      cursor: pointer;
+    }
+    tr.selected {
+      background: #d0e7ff;
+    }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <script>
-    // Sukuriam žemėlapį
-    const map = L.map('map').setView([54.68, 25.28], 12);
+  <div class="layout">
+    <div id="map"></div>
+    <div id="table-container">
+      <table id="data-table">
+        <thead>
+          <tr id="table-header-row"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
 
-    // Pagrindinis fonas (OSM)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
+  <script>
+    // 1) KONFIGŪRACIJA – ČIA PASIKEISK PAGAL SAVE
+    // -------------------------------------------
+
+    // tavo FeatureService ar MapService layerio URL (0 sluoksnis)
+    const featureLayerUrl =
+      "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Graf2/MapServer/0";
+      // jei turi tik MapServer, naudok MapServer/0, bet jis turi palaikyti query?f=geojson
+
+    // kokius laukus norime pasiimti
+    const fields = [
+      "OBJECTID",
+      "statinio_tip",   // pvz. statinio tipas
+      "statusas_tvirtinimas", // pvz. statusas
+      "uzsak_vykd_data"       // pvz. užsakymo data
+      // pridėk/pašalink pagal savo schemą
+    ];
+
+    // Antraštės, kurias rodys lentelėje
+    const fieldLabels = {
+      OBJECTID: "ID",
+      statinio_tip: "Statinio tipas",
+      statusas_tvirtinimas: "Statusas",
+      uzsak_vykd_data: "Užsakymo data"
+    };
+
+    // pradinis žemėlapio centras ir mastelis
+    const initialCenter = [54.6872, 25.2797]; // Vilnius
+    const initialZoom = 12;
+
+    // 2) ŽEMĖLAPIS
+    // ------------
+
+    const map = L.map("map").setView(initialCenter, initialZoom);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 20,
+      attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // Įkeliam duomenis iš ArcGIS REST (per GeoJSON)
-    fetch('https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Grafiti/FeatureServer/0/query?where=1=1&outFields=statusas,tvark_tipas,uzsak_vykd_data&outSR=4326&f=geojson')
-      .then(res => res.json())
-      .then(data => {
-        L.geoJSON(data, {
-          pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-            radius: 4,
-            fillColor: '#ff3333',
-            color: '#800000',
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.8
-          }).bindPopup(`
-            <b>Statusas:</b> ${feature.properties.statusas}<br>
-            <b>Tipas:</b> ${feature.properties.tvark_tipas}<br>
-            <b>Data:</b> ${feature.properties.uzsak_vykd_data || '-'}
-          `)
-        }).addTo(map);
+    // Naudosim cluster'ius, kad būtų greičiau
+    const clusterGroup = L.markerClusterGroup();
+    map.addLayer(clusterGroup);
+
+    // Susiejimui tarp lentelės eilutės ir markerių
+    const objectIdToMarker = new Map();
+    const markerToObjectId = new Map();
+
+    // 3) Duomenų užklausimas iš ArcGIS
+    // --------------------------------
+
+    const queryUrl =
+      featureLayerUrl +
+      "/query" +
+      "?where=1=1" +
+      "&outFields=" + encodeURIComponent(fields.join(",")) +
+      "&outSR=4326" +
+      "&f=geojson";
+
+    fetch(queryUrl)
+      .then((res) => res.json())
+      .then((geojson) => {
+        buildMapAndTable(geojson);
+      })
+      .catch((err) => {
+        console.error("Nepavyko nuskaityti duomenų iš serviso:", err);
       });
+
+    // 4) Žemėlapio ir lentelės generavimas
+    // ------------------------------------
+
+    function buildMapAndTable(geojson) {
+      const headerRow = document.getElementById("table-header-row");
+      const body = document.getElementById("table-body");
+
+      // suformuojam lentelės antraštes
+      fields.forEach((f) => {
+        const th = document.createElement("th");
+        th.textContent = fieldLabels[f] || f;
+        headerRow.appendChild(th);
+      });
+
+      // pridedam X ir Y stulpelius lentelėje
+      ["X", "Y"].forEach((coordField) => {
+        const th = document.createElement("th");
+        th.textContent = coordField;
+        headerRow.appendChild(th);
+      });
+
+      const markers = [];
+
+      geojson.features.forEach((feat) => {
+        if (!feat.geometry || feat.geometry.type !== "Point") return;
+
+        const coords = feat.geometry.coordinates; // [x, y] = [lon, lat]
+        const lon = coords[0];
+        const lat = coords[1];
+
+        const props = feat.properties || {};
+        const objectId = props.OBJECTID;
+
+        // markeris
+        const marker = L.circleMarker([lat, lon], {
+          radius: 4,
+          fillColor: "#ff3333",
+          color: "#800000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        });
+
+        const popupHtml = `
+          <div>
+            <div><strong>ID:</strong> ${objectId}</div>
+            <div><strong>Statinio tipas:</strong> ${props.statinio_tip ?? "-"}</div>
+            <div><strong>Statusas:</strong> ${props.statusas_tvirtinimas ?? "-"}</div>
+            <div><strong>Užsakymo data:</strong> ${props.uzsak_vykd_data ?? "-"}</div>
+          </div>
+        `;
+        marker.bindPopup(popupHtml);
+
+        clusterGroup.addLayer(marker);
+        markers.push(marker);
+
+        objectIdToMarker.set(objectId, marker);
+        markerToObjectId.set(marker, objectId);
+
+        // lentelės eilutė
+        const tr = document.createElement("tr");
+        tr.dataset.objectid = objectId;
+
+        fields.forEach((f) => {
+          const td = document.createElement("td");
+          td.textContent = props[f] ?? "";
+          tr.appendChild(td);
+        });
+
+        // X ir Y
+        const tdX = document.createElement("td");
+        const tdY = document.createElement("td");
+        tdX.textContent = lon.toFixed(6);
+        tdY.textContent = lat.toFixed(6);
+        tr.appendChild(tdX);
+        tr.appendChild(tdY);
+
+        // paspaudus eilutę – zoom į markerį
+        tr.addEventListener("click", () => {
+          selectRow(tr);
+          map.setView([lat, lon], 18);
+          marker.openPopup();
+        });
+
+        body.appendChild(tr);
+
+        // markerio click – paryškinam atitinkamą eilutę
+        marker.on("click", () => {
+          const rows = body.querySelectorAll("tr");
+          rows.forEach((r) => r.classList.remove("selected"));
+          tr.classList.add("selected");
+        });
+      });
+
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
+      }
+    }
+
+    function selectRow(tr) {
+      const body = document.getElementById("table-body");
+      const rows = body.querySelectorAll("tr");
+      rows.forEach((r) => r.classList.remove("selected"));
+      tr.classList.add("selected");
+    }
   </script>
 </body>
 </html>
