@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Grafiti žemėlapis</title>
 
-  <!-- Leaflet CSS/JS -->
+  <!-- Leaflet -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -17,20 +17,8 @@
     crossorigin=""
   ></script>
 
-  <!-- Klasteriavimas (nebūtina, bet labai padeda kai daug taškų) -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-  />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-  />
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-
   <style>
-    html,
-    body {
+    html, body {
       height: 100%;
       margin: 0;
     }
@@ -44,102 +32,59 @@
   <div id="map"></div>
 
   <script>
-    // --------------------------------------------------------------------
-    // KONFIGŪRACIJA – PRIREIKUS PASIKEISK ČIA
-    // --------------------------------------------------------------------
-
-    // ArcGIS Feature/Map service sluoksnio URL (0 sluoksnis)
+    // arcgis feature layer url
     const featureLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Grafiti/MapServer/0";
-      // jei naudosi MapServer, gali būti .../MapServer/0
 
-    // Laukai, kuriuos norim matyti popup'e
-    const fields = [
-      "OBJECTID",
-      "statinio_tip",
-      "statusas_tvirtinimas",
-      "uzsak_vykd_data"
-    ];
+    // pradinis centras ir mastelis
+    const map = L.map("map").setView([54.6872, 25.2797], 12);
 
-    // Pradinis žemėlapio centras ir mastelis (Vilnius)
-    const initialCenter = [54.6872, 25.2797];
-    const initialZoom = 12;
-
-    // --------------------------------------------------------------------
-    // ŽEMĖLAPIS
-    // --------------------------------------------------------------------
-
-    const map = L.map("map").setView(initialCenter, initialZoom);
-
+    // osm fonas
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 20,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    const clusterGroup = L.markerClusterGroup();
-    map.addLayer(clusterGroup);
-
-    // --------------------------------------------------------------------
-    // Duomenų užklausa iš ArcGIS kaip GeoJSON
-    // --------------------------------------------------------------------
-
+    // paprasta query į arcgis kaip geojson, be jokių filtrų
     const queryUrl =
       featureLayerUrl +
       "/query" +
       "?where=1=1" +
-      "&outFields=" +
-      encodeURIComponent(fields.join(",")) +
+      "&outFields=*" +
       "&outSR=4326" +
       "&f=geojson";
 
     fetch(queryUrl)
       .then((res) => res.json())
       .then((geojson) => {
-        addFeaturesToMap(geojson);
+        addMarkers(geojson);
       })
       .catch((err) => {
-        console.error("Nepavyko nuskaityti duomenų iš serviso:", err);
+        console.error("klaida skaitant servisą:", err);
       });
 
-    // --------------------------------------------------------------------
-    // Taškų uždėjimas ant žemėlapio
-    // --------------------------------------------------------------------
-
-    function addFeaturesToMap(geojson) {
+    function addMarkers(geojson) {
       const markers = [];
 
       geojson.features.forEach((feat) => {
         if (!feat.geometry || feat.geometry.type !== "Point") return;
 
-        const coords = feat.geometry.coordinates; // [lon, lat]
+        const coords = feat.geometry.coordinates; // [x, y] = [lon, lat]
         const lon = coords[0];
         const lat = coords[1];
         const props = feat.properties || {};
 
-        const marker = L.circleMarker([lat, lon], {
-          radius: 4,
-          fillColor: "#ff3333",
-          color: "#800000",
-          weight: 1,
-          opacity: 1,
-          fillOpacity: 0.8
-        });
+        const marker = L.marker([lat, lon]);
 
         const popupHtml = `
           <div style="font-size:12px">
-            <div><strong>ID:</strong> ${props.OBJECTID}</div>
-            <div><strong>Statinio tipas:</strong> ${props.statinio_tip ?? "-"}</div>
-            <div><strong>Statusas:</strong> ${
-              props.statusas_tvirtinimas ?? "-"
-            }</div>
-            <div><strong>Užsakymo data:</strong> ${
-              props.uzsak_vykd_data ?? "-"
-            }</div>
+            <div><b>X:</b> ${lon.toFixed(6)}</div>
+            <div><b>Y:</b> ${lat.toFixed(6)}</div>
           </div>
         `;
-        marker.bindPopup(popupHtml);
 
-        clusterGroup.addLayer(marker);
+        marker.bindPopup(popupHtml);
+        marker.addTo(map);
         markers.push(marker);
       });
 
