@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Grafiti žemėlapis</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // Sukuriam žemėlapį
+    const map = L.map('map').setView([54.68, 25.28], 12);
+
+    // Pagrindinis fonas (OSM)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    // Įkeliam duomenis iš ArcGIS REST (per GeoJSON)
+    fetch('https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Grafiti/FeatureServer/0/query?where=1=1&outFields=statusas,tvark_tipas,uzsak_vykd_data&outSR=4326&f=geojson')
+      .then(res => res.json())
+      .then(data => {
+        L.geoJSON(data, {
+          pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+            radius: 4,
+            fillColor: '#ff3333',
+            color: '#800000',
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+          }).bindPopup(`
+            <b>Statusas:</b> ${feature.properties.statusas}<br>
+            <b>Tipas:</b> ${feature.properties.tvark_tipas}<br>
+            <b>Data:</b> ${feature.properties.uzsak_vykd_data || '-'}
+          `)
+        }).addTo(map);
+      });
+  </script>
+</body>
+</html>
