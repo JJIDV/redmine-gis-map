@@ -1,105 +1,319 @@
 <!DOCTYPE html>
 <html lang="lt">
 <head>
-  <meta charset="utf-8" />
-  <title>Grafiti žemėlapis</title>
+  <meta charset="UTF-8" />
+  <title>Graffiti – visi aktyvūs taškai</title>
 
-  <!-- Leaflet -->
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    crossorigin=""
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
   />
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    crossorigin=""
-  ></script>
 
   <style>
     html, body {
       height: 100%;
       margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
     }
-    #map {
+
+    #app {
+      display: flex;
       height: 100%;
       width: 100%;
+    }
+
+    #map {
+      flex: 2;
+    }
+
+    #sidebar {
+      flex: 1;
+      max-width: 420px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #sidebar-header {
+      padding: 8px 10px;
+      border-bottom: 1px solid #ddd;
+      background: #f7f7f7;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    #filter {
+      padding: 6px 10px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 13px;
+    }
+
+    #list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+
+    .feature-row {
+      padding: 6px 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .feature-row:hover {
+      background: #f0f8ff;
+    }
+
+    .feature-row.active {
+      background: #e6f2ff;
+    }
+
+    .row-title {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .row-sub {
+      color: #555;
+    }
+
+    .row-coords {
+      color: #777;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    #status-bar {
+      padding: 4px 10px;
+      border-top: 1px solid #ddd;
+      font-size: 11px;
+      color: #555;
+      background: #fafafa;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">Graffiti taškai</div>
+      <input
+        id="filter"
+        type="text"
+        placeholder="Filtruoti pagal ID / adresą..."
+      />
+      <div id="list"></div>
+      <div id="status-bar">Kraunama...</div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ČIA ĮRAŠYK SAVO LAYERIO URL, kuris baigiasi /MapServer/0
-    const mapServerLayerUrl =
+    // ===== KONFIGŪRACIJA =====
+    const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/Graf2/MapServer/0";
 
-    // Pradinis žemėlapio centras (Vilnius)
-    const map = L.map("map").setView([54.6872, 25.2797], 12);
+    // Filtras "aktyviems" – dabar 1=1, jei norėsi, pakeisk pvz. "statusas = 1"
+    const whereClause = "1=1";
 
-    // OSM fonas
+    // Kurie atributai rodomi sąraše (jei jų nėra – tiesiog praleidžiami)
+    const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"]; // pavadinimas
+    const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"]; // adresas
+
+    // ===== ŽEMĖLAPIO SUKŪRIMAS =====
+    const map = L.map("map").setView([54.6905, 25.2799], 12); // Vilnius
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 20,
+      maxZoom: 19,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // Esri JSON užklausa (ne geojson!)
-    const queryUrl =
-      mapServerLayerUrl +
-      "/query" +
-      "?where=1=1" +
-      "&outFields=*" +
-      "&returnGeometry=true" +
-      "&outSR=4326" +       // konvertuoja į WGS84 (lon/lat)
-      "&f=pjson";
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar = document.getElementById("status-bar");
 
-    fetch(queryUrl)
-      .then((res) => res.json())
-      .then((data) => {
-        addMarkersFromEsriJson(data);
-      })
-      .catch((err) => {
-        console.error("Klaida skaitant servisą:", err);
+    let allItems = []; // {marker, rowEl, attrs, lat, lon}
+
+    // ===== PAGALBINĖS FUNKCIJOS =====
+    function pickField(attrs, candidates) {
+      for (const c of candidates) {
+        if (c in attrs && attrs[c] != null && attrs[c] !== "") return c;
+      }
+      return null;
+    }
+
+    function createQueryUrl() {
+      const params = new URLSearchParams({
+        where: whereClause,
+        outFields: "*",
+        returnGeometry: "true",
+        outSR: "4326", // kad gauti lat/lon
+        f: "pjson"
       });
+      return arcgisLayerUrl + "/query?" + params.toString();
+    }
 
-    function addMarkersFromEsriJson(data) {
-      if (!data.features || !Array.isArray(data.features)) {
-        console.error("Nėra features lauko atsakyme:", data);
+    function renderList(items) {
+      listEl.innerHTML = "";
+      items.forEach((item) => {
+        listEl.appendChild(item.rowEl);
+      });
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
+    }
+
+    function applyFilter() {
+      const q = filterInput.value.trim().toLowerCase();
+      if (!q) {
+        renderList(allItems);
         return;
       }
+      const filtered = allItems.filter((item) => {
+        const text =
+          (item.searchText || "").toString().toLowerCase();
+        return text.includes(q);
+      });
+      renderList(filtered);
+    }
 
-      const markers = [];
+    // ===== DUOMENŲ KROVIMAS IŠ ARCGIS =====
+    async function loadData() {
+      try {
+        const url = createQueryUrl();
+        console.log("Klausiu:", url);
+        const resp = await fetch(url);
+        const data = await resp.json();
 
-      data.features.forEach((f) => {
-        const geom = f.geometry;
-        if (!geom || typeof geom.x !== "number" || typeof geom.y !== "number") {
+        if (!data.features || !Array.isArray(data.features)) {
+          statusBar.textContent = "Nerasta jokių objektų";
           return;
         }
 
-        const lon = geom.x;
-        const lat = geom.y;
+        const markers = [];
+        data.features.forEach((f) => {
+          const attrs = f.attributes || {};
+          const geom = f.geometry || {};
+          if (
+            typeof geom.x !== "number" ||
+            typeof geom.y !== "number"
+          ) {
+            return;
+          }
 
-        const marker = L.marker([lat, lon]);
+          const lon = geom.x;
+          const lat = geom.y;
+          const latLng = [lat, lon];
 
-        const popupHtml = `
-          <div style="font-size:12px">
-            <div><b>X:</b> ${lon.toFixed(6)}</div>
-            <div><b>Y:</b> ${lat.toFixed(6)}</div>
-          </div>
-        `;
+          // Marker
+          const marker = L.marker(latLng).addTo(map);
 
-        marker.bindPopup(popupHtml);
-        marker.addTo(map);
-        markers.push(marker);
-      });
+          const titleField = pickField(attrs, titleFieldCandidates);
+          const addrField = pickField(attrs, addressFieldCandidates);
 
-      if (markers.length > 0) {
-        const group = L.featureGroup(markers);
-        map.fitBounds(group.getBounds().pad(0.1));
-      } else {
-        console.warn("features masyve nėra taškų su geometrija.");
+          const title =
+            (titleField && attrs[titleField]) ||
+            "Objektas #" + (attrs.OBJECTID || "");
+          const address = addrField ? attrs[addrField] : "";
+
+          const popupHtml =
+            "<b>" +
+            title +
+            "</b><br/>" +
+            (address ? address + "<br/>" : "") +
+            "Lat: " +
+            lat.toFixed(6) +
+            "<br/>Lon: " +
+            lon.toFixed(6);
+
+          marker.bindPopup(popupHtml);
+
+          // Eilutė sąraše
+          const row = document.createElement("div");
+          row.className = "feature-row";
+
+          const titleEl = document.createElement("div");
+          titleEl.className = "row-title";
+          titleEl.textContent = title;
+
+          const subEl = document.createElement("div");
+          subEl.className = "row-sub";
+          subEl.textContent = address || "(be adreso)";
+
+          const coordsEl = document.createElement("div");
+          coordsEl.className = "row-coords";
+          coordsEl.textContent =
+            "Lat: " +
+            lat.toFixed(6) +
+            " | Lon: " +
+            lon.toFixed(6);
+
+          row.appendChild(titleEl);
+          row.appendChild(subEl);
+          row.appendChild(coordsEl);
+
+          // Kliko sąsajos
+          row.addEventListener("click", () => {
+            map.setView(latLng, 18);
+            marker.openPopup();
+
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          marker.on("click", () => {
+            row.scrollIntoView({
+              behavior: "smooth",
+              block: "center"
+            });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          const searchText =
+            title +
+            " " +
+            address +
+            " " +
+            JSON.stringify(attrs);
+
+          allItems.push({
+            marker,
+            rowEl: row,
+            attrs,
+            lat,
+            lon,
+            searchText
+          });
+
+          markers.push(marker);
+        });
+
+        if (markers.length > 0) {
+          const group = L.featureGroup(markers);
+          map.fitBounds(group.getBounds().pad(0.1));
+        }
+
+        renderList(allItems);
+      } catch (e) {
+        console.error(e);
+        statusBar.textContent =
+          "Klaida skaitant duomenis (žiūrėk Console)";
       }
     }
+
+    filterInput.addEventListener("input", applyFilter);
+
+    loadData();
   </script>
 </body>
 </html>
