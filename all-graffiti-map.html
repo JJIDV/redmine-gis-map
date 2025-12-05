@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – vykdomi darbai (statusas=3)</title>
+  <title>Graffiti – statusas=3 pagal tvarkymo tipą</title>
 
   <link
     rel="stylesheet"
@@ -15,117 +15,62 @@
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         sans-serif;
-    }
-
-    #app {
-      display: flex;
-      height: 100%;
-      width: 100%;
-    }
-
-    #map {
-      flex: 1;
-    }
-
-    #sidebar {
-      flex: 0 0 140px;
-      max-width: 140px;
-      border-left: 1px solid #ccc;
-      display: flex;
-      flex-direction: column;
-      font-size: 12px;
-    }
-
-    #sidebar-header {
-      padding: 6px 8px;
-      border-bottom: 1px solid #ddd;
-      background: #f7f7f7;
-      font-weight: 600;
-      font-size: 12px;
-      text-align: center;
-    }
-
-    #filter {
-      padding: 4px 6px;
-      border: none;
-      border-bottom: 1px solid #ddd;
-      outline: none;
-      font-size: 12px;
-    }
-
-    #list {
-      flex: 1;
-      overflow-y: auto;
-      font-size: 12px;
-    }
-
-    .feature-row {
-      padding: 4px 6px;
-      border-bottom: 1px solid #eee;
-      cursor: pointer;
-    }
-
-    .feature-row:hover {
-      background: #f0f8ff;
-    }
-
-    .feature-row.active {
-      background: #e6f2ff;
-    }
-
-    .row-title {
-      font-weight: 600;
-      margin-bottom: 1px;
-      font-size: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .row-sub {
-      color: #555;
-      font-size: 11px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .row-coords {
-      color: #777;
-      font-size: 10px;
-      margin-top: 1px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #status-bar {
-      padding: 3px 6px;
-      border-top: 1px solid #ddd;
-      font-size: 10px;
-      color: #555;
       background: #fafafa;
-      text-align: center;
     }
 
-    /* 🔸 automatinis paslėpimas kai plotis < 1000px */
-    @media (max-width: 600px) {
-      #sidebar {
-        display: none;
+    h2 {
+      margin: 12px 0 6px 0;
+      text-align: center;
+      font-size: 16px;
+      color: #333;
+    }
+
+    .map-wrapper {
+      width: 100%;
+      height: 380px;
+      margin: 0 auto 24px auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: white;
+    }
+
+    .map {
+      width: 100%;
+      height: 100%;
+      border-radius: 4px;
+    }
+
+    .status-bar {
+      font-size: 12px;
+      text-align: center;
+      color: #555;
+      padding: 4px 0;
+    }
+
+    @media (max-width: 1000px) {
+      .map-wrapper {
+        height: 300px;
       }
     }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="map"></div>
+  <h2>Dažoma (tvark_tipas = 1, statusas = 3)</h2>
+  <div class="map-wrapper">
+    <div id="map1" class="map"></div>
+    <div id="status1" class="status-bar">Kraunama...</div>
+  </div>
 
-    <div id="sidebar">
-      <div id="sidebar-header">Taškai (st.=3)</div>
-      <input id="filter" type="text" placeholder="Filtruoti..." />
-      <div id="list"></div>
-      <div id="status-bar">Kraunama...</div>
-    </div>
+  <h2>Valoma (tvark_tipas = 2, statusas = 3)</h2>
+  <div class="map-wrapper">
+    <div id="map2" class="map"></div>
+    <div id="status2" class="status-bar">Kraunama...</div>
+  </div>
+
+  <h2>Kiti tipai (statusas = 3, tvark_tipas ≠ 1,2)</h2>
+  <div class="map-wrapper">
+    <div id="map3" class="map"></div>
+    <div id="status3" class="status-bar">Kraunama...</div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -133,119 +78,75 @@
   <script>
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/redmine_map/FeatureServer/0";
-    const whereClause = "statusas = 3";
-    const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
-    const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
 
-    const map = L.map("map").setView([54.6905, 25.2799], 12);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap"
-    }).addTo(map);
+    // trijų žemėlapių konfigūracija
+    const mapsConfig = [
+      { id: "map1", statusId: "status1", where: "statusas = 3 AND tvark_tipas = 1", color: "red" },
+      { id: "map2", statusId: "status2", where: "statusas = 3 AND tvark_tipas = 2", color: "blue" },
+      { id: "map3", statusId: "status3", where: "statusas = 3 AND (tvark_tipas <> 1 AND tvark_tipas <> 2)", color: "green" }
+    ];
 
-    const listEl = document.getElementById("list");
-    const filterInput = document.getElementById("filter");
-    const statusBar = document.getElementById("status-bar");
-    let allItems = [];
+    // bendra funkcija duomenims užkrauti
+    async function loadMap(config) {
+      const map = L.map(config.id).setView([54.6905, 25.2799], 12);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap"
+      }).addTo(map);
 
-    function pickField(attrs, candidates) {
-      for (const c of candidates) {
-        if (c in attrs && attrs[c] != null && attrs[c] !== "") return c;
-      }
-      return null;
-    }
+      const statusEl = document.getElementById(config.statusId);
+      const url =
+        arcgisLayerUrl +
+        "/query?where=" +
+        encodeURIComponent(config.where) +
+        "&outFields=*&returnGeometry=true&outSR=4326&f=pjson";
 
-    function createQueryUrl() {
-      const params = new URLSearchParams({
-        where: whereClause,
-        outFields: "*",
-        returnGeometry: "true",
-        outSR: "4326",
-        f: "pjson"
-      });
-      return arcgisLayerUrl + "/query?" + params.toString();
-    }
-
-    function renderList(items) {
-      if (!listEl) return;
-      listEl.innerHTML = "";
-      items.forEach((item) => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomi " + items.length + " objektai";
-    }
-
-    function applyFilter() {
-      const q = filterInput.value.trim().toLowerCase();
-      if (!q) return renderList(allItems);
-      const filtered = allItems.filter((item) =>
-        (item.searchText || "").toLowerCase().includes(q)
-      );
-      renderList(filtered);
-    }
-
-    async function loadData() {
       try {
-        const resp = await fetch(createQueryUrl());
+        const resp = await fetch(url);
         const data = await resp.json();
+
         if (!data.features || !data.features.length) {
-          statusBar.textContent = "Nerasta objektų";
+          statusEl.textContent = "Nerasta objektų.";
           return;
         }
 
         const markers = [];
         data.features.forEach((f) => {
-          const a = f.attributes || {};
-          if (a.statusas !== 3) return;
           const g = f.geometry;
+          const a = f.attributes || {};
           if (!g || g.x == null || g.y == null) return;
           const lat = g.y, lon = g.x;
-          const marker = L.marker([lat, lon]).addTo(map);
 
-          const title = a.ID || a.OBJECTID || "Objektas";
-          const address = a.adresas || "";
-          marker.bindPopup(`<b>${title}</b><br>${address}<br>statusas=3`);
+          const marker = L.circleMarker([lat, lon], {
+            radius: 6,
+            fillColor: config.color,
+            color: "#333",
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+          })
+            .addTo(map)
+            .bindPopup(
+              `<b>ID:</b> ${a.ID || a.OBJECTID || "-"}<br>` +
+                `<b>Adresas:</b> ${a.adresas || "-"}<br>` +
+                `<b>Statusas:</b> ${a.statusas}<br>` +
+                `<b>Tvarkymo tipas:</b> ${a.tvark_tipas}`
+            );
 
-          if (!listEl) return;
-          const row = document.createElement("div");
-          row.className = "feature-row";
-          row.innerHTML = `<div class='row-title'>${title}</div>
-                           <div class='row-sub'>${address}</div>
-                           <div class='row-coords'>${lat.toFixed(5)}, ${lon.toFixed(5)}</div>`;
-
-          row.onclick = () => {
-            map.setView([lat, lon], 18);
-            marker.openPopup();
-            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
-            row.classList.add("active");
-          };
-
-          marker.on("click", () => {
-            row.scrollIntoView({behavior: "smooth", block: "center"});
-            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
-            row.classList.add("active");
-          });
-
-          allItems.push({
-            marker,
-            rowEl: row,
-            searchText: `${title} ${address} ${JSON.stringify(a)}`
-          });
           markers.push(marker);
         });
 
-        if (markers.length) {
-          const g = L.featureGroup(markers);
-          map.fitBounds(g.getBounds().pad(0.1));
-        }
-
-        renderList(allItems);
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
+        statusEl.textContent = "Rodoma " + markers.length + " objektų.";
       } catch (e) {
         console.error(e);
-        statusBar.textContent = "Klaida įkeliant duomenis";
+        statusEl.textContent = "Klaida kraunant duomenis.";
       }
     }
 
-    if (filterInput) filterInput.addEventListener("input", applyFilter);
-    loadData();
+    // paleidžiam visus 3 žemėlapius
+    mapsConfig.forEach((cfg) => loadMap(cfg));
   </script>
 </body>
 </html>
