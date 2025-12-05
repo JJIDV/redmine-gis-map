@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – visi aktyvūs taškai</title>
+  <title>Graffiti – vykdomi darbai (statusas=3)</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -101,7 +101,7 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Graffiti taškai</div>
+      <div id="sidebar-header">Graffiti taškai (statusas = 3)</div>
       <input
         id="filter"
         type="text"
@@ -117,15 +117,17 @@
 
   <script>
     // ===== KONFIGŪRACIJA =====
+
+    // tavo naujas Feature Service
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/redmine_map/FeatureServer/0";
 
-    // Filtras "aktyviems" – dabar 1=1, jei norėsi, pakeisk pvz. "statusas = 1"
-    const whereClause = "1=1";
+    // čia filtras – rodom tik statusas = 3 (Vykdoma (Rangovai))
+    const whereClause = "statusas = 3";
 
-    // Kurie atributai rodomi sąraše (jei jų nėra – tiesiog praleidžiami)
-    const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"]; // pavadinimas
-    const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"]; // adresas
+    // kurie atributai naudojami kaip pavadinimas ir adresas sąraše
+    const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
+    const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
 
     // ===== ŽEMĖLAPIO SUKŪRIMAS =====
     const map = L.map("map").setView([54.6905, 25.2799], 12); // Vilnius
@@ -154,7 +156,7 @@
         where: whereClause,
         outFields: "*",
         returnGeometry: "true",
-        outSR: "4326", // kad gauti lat/lon
+        outSR: "4326", // lat/lon
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -165,7 +167,7 @@
       items.forEach((item) => {
         listEl.appendChild(item.rowEl);
       });
-      statusBar.textContent = "Rodomi " + items.length + " objektai";
+      statusBar.textContent = "Rodomi " + items.length + " objektai (statusas = 3)";
     }
 
     function applyFilter() {
@@ -175,8 +177,7 @@
         return;
       }
       const filtered = allItems.filter((item) => {
-        const text =
-          (item.searchText || "").toString().toLowerCase();
+        const text = (item.searchText || "").toString().toLowerCase();
         return text.includes(q);
       });
       renderList(filtered);
@@ -190,19 +191,20 @@
         const resp = await fetch(url);
         const data = await resp.json();
 
-        if (!data.features || !Array.isArray(data.features)) {
-          statusBar.textContent = "Nerasta jokių objektų";
+        console.log("Gautas data:", data);
+        console.log("features count:", data.features && data.features.length);
+
+        if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
+          statusBar.textContent = "Nerasta jokių objektų (statusas = 3)";
           return;
         }
 
         const markers = [];
         data.features.forEach((f) => {
           const attrs = f.attributes || {};
-          const geom = f.geometry || {};
-          if (
-            typeof geom.x !== "number" ||
-            typeof geom.y !== "number"
-          ) {
+          const geom = f.geometry;
+
+          if (!geom || geom.x == null || geom.y == null) {
             return;
           }
 
@@ -229,7 +231,9 @@
             "Lat: " +
             lat.toFixed(6) +
             "<br/>Lon: " +
-            lon.toFixed(6);
+            lon.toFixed(6) +
+            "<br/>statusas = " +
+            (attrs.statusas !== undefined ? attrs.statusas : "");
 
           marker.bindPopup(popupHtml);
 
