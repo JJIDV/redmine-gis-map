@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Graffiti – vykdomi darbai (statusas=3)</title>
 
-  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
@@ -28,7 +27,6 @@
       flex: 1;
     }
 
-    /* ✅ sumažintas sąrašas ~3 kartus */
     #sidebar {
       flex: 0 0 140px;
       max-width: 140px;
@@ -109,6 +107,13 @@
       background: #fafafa;
       text-align: center;
     }
+
+    /* 🔸 automatinis paslėpimas kai plotis < 1000px */
+    @media (max-width: 600px) {
+      #sidebar {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -117,28 +122,21 @@
 
     <div id="sidebar">
       <div id="sidebar-header">Taškai (st.=3)</div>
-      <input
-        id="filter"
-        type="text"
-        placeholder="Filtruoti..."
-      />
+      <input id="filter" type="text" placeholder="Filtruoti..." />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
     </div>
   </div>
 
-  <!-- Leaflet JS -->
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ===== KONFIGŪRACIJA =====
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/redmine_map/FeatureServer/0";
     const whereClause = "statusas = 3";
     const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
     const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
 
-    // ===== ŽEMĖLAPIO SUKŪRIMAS =====
     const map = L.map("map").setView([54.6905, 25.2799], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -169,6 +167,7 @@
     }
 
     function renderList(items) {
+      if (!listEl) return;
       listEl.innerHTML = "";
       items.forEach((item) => listEl.appendChild(item.rowEl));
       statusBar.textContent = "Rodomi " + items.length + " objektai";
@@ -205,6 +204,7 @@
           const address = a.adresas || "";
           marker.bindPopup(`<b>${title}</b><br>${address}<br>statusas=3`);
 
+          if (!listEl) return;
           const row = document.createElement("div");
           row.className = "feature-row";
           row.innerHTML = `<div class='row-title'>${title}</div>
@@ -244,7 +244,7 @@
       }
     }
 
-    filterInput.addEventListener("input", applyFilter);
+    if (filterInput) filterInput.addEventListener("input", applyFilter);
     loadData();
   </script>
 </body>
