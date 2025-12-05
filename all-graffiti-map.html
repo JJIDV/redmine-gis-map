@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – vykdomi darbai (statusas=3)</title>
+  <title>Graffiti – vykdomi darbai (statusas = 3)</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -19,21 +19,33 @@
     }
 
     #app {
+      position: relative;
       display: flex;
       height: 100%;
       width: 100%;
+      overflow: hidden;
     }
 
     #map {
-      flex: 2;
+      flex: 1;
     }
 
     #sidebar {
-      flex: 1;
+      flex: 0 0 420px;
       max-width: 420px;
+      min-width: 260px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
+      background: #fff;
+      transition: transform 0.2s ease-out;
+      transform: translateX(0);
+      z-index: 500;
+    }
+
+    /* Kai šoninis panelis paslėptas */
+    #sidebar.collapsed {
+      transform: translateX(100%);
     }
 
     #sidebar-header {
@@ -42,6 +54,10 @@
       background: #f7f7f7;
       font-weight: 600;
       font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
 
     #filter {
@@ -94,14 +110,41 @@
       color: #555;
       background: #fafafa;
     }
+
+    /* Mygtukas sąrašui slėpti/rodyti – viršuje dešinėje, ant žemėlapio */
+    #toggle-sidebar-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 600;
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background: rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+    }
+
+    #toggle-sidebar-btn:hover {
+      background: #f0f0f0;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="map"></div>
 
+    <!-- Mygtukas, kuris slepia / rodo sąrašą -->
+    <button id="toggle-sidebar-btn">⮜ Slėpti sąrašą</button>
+
     <div id="sidebar">
-      <div id="sidebar-header">Graffiti taškai (statusas = 3)</div>
+      <div id="sidebar-header">
+        <span>Graffiti taškai (statusas = 3)</span>
+        <!-- Papildomas uždarymo mygtukas šone (neprivalomas) -->
+        <button id="hide-sidebar-inline" style="font-size:11px;padding:2px 6px;">
+          Slėpti
+        </button>
+      </div>
       <input
         id="filter"
         type="text"
@@ -118,14 +161,14 @@
   <script>
     // ===== KONFIGŪRACIJA =====
 
-    // tavo naujas Feature Service
+    // Tavo Feature Service
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/redmine_map/FeatureServer/0";
 
-    // čia filtras – rodom tik statusas = 3 (Vykdoma (Rangovai))
+    // Filtras (statusas = 3)
     const whereClause = "statusas = 3";
 
-    // kurie atributai naudojami kaip pavadinimas ir adresas sąraše
+    // Kurie atributai naudojami kaip pavadinimas ir adresas sąraše
     const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
     const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
 
@@ -140,8 +183,38 @@
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
     const statusBar = document.getElementById("status-bar");
+    const sidebar = document.getElementById("sidebar");
+    const toggleBtn = document.getElementById("toggle-sidebar-btn");
+    const hideInlineBtn = document.getElementById("hide-sidebar-inline");
 
     let allItems = []; // {marker, rowEl, attrs, lat, lon}
+
+    // ===== SIDEBAR SLĖPIMAS / RODYMAS =====
+    function setSidebarVisible(visible) {
+      if (visible) {
+        sidebar.classList.remove("collapsed");
+        toggleBtn.textContent = "⮜ Slėpti sąrašą";
+      } else {
+        sidebar.classList.add("collapsed");
+        toggleBtn.textContent = "⮞ Rodyti sąrašą";
+      }
+      // Duodam Leaflet'ui laiko, tada perskaičiuojam dydį
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 250);
+    }
+
+    let sidebarVisible = true;
+
+    toggleBtn.addEventListener("click", () => {
+      sidebarVisible = !sidebarVisible;
+      setSidebarVisible(sidebarVisible);
+    });
+
+    hideInlineBtn.addEventListener("click", () => {
+      sidebarVisible = false;
+      setSidebarVisible(false);
+    });
 
     // ===== PAGALBINĖS FUNKCIJOS =====
     function pickField(attrs, candidates) {
@@ -200,9 +273,17 @@
         }
 
         const markers = [];
+        allItems = [];
+
         data.features.forEach((f) => {
           const attrs = f.attributes || {};
           const geom = f.geometry;
+
+          // papildomas filtras kliente: tik statusas = 3
+          const statusValue = attrs.statusas;
+          if (statusValue !== 3) {
+            return;
+          }
 
           if (!geom || geom.x == null || geom.y == null) {
             return;
