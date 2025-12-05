@@ -25,41 +25,44 @@
     }
 
     #map {
-      flex: 2;
+      flex: 1;
     }
 
+    /* ✅ sumažintas sąrašas ~3 kartus */
     #sidebar {
-      flex: 1;
-      max-width: 420px;
+      flex: 0 0 140px;
+      max-width: 140px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
+      font-size: 12px;
     }
 
     #sidebar-header {
-      padding: 8px 10px;
+      padding: 6px 8px;
       border-bottom: 1px solid #ddd;
       background: #f7f7f7;
       font-weight: 600;
-      font-size: 14px;
+      font-size: 12px;
+      text-align: center;
     }
 
     #filter {
-      padding: 6px 10px;
+      padding: 4px 6px;
       border: none;
       border-bottom: 1px solid #ddd;
       outline: none;
-      font-size: 13px;
+      font-size: 12px;
     }
 
     #list {
       flex: 1;
       overflow-y: auto;
-      font-size: 13px;
+      font-size: 12px;
     }
 
     .feature-row {
-      padding: 6px 10px;
+      padding: 4px 6px;
       border-bottom: 1px solid #eee;
       cursor: pointer;
     }
@@ -74,25 +77,37 @@
 
     .row-title {
       font-weight: 600;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .row-sub {
       color: #555;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .row-coords {
       color: #777;
-      font-size: 11px;
-      margin-top: 2px;
+      font-size: 10px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     #status-bar {
-      padding: 4px 10px;
+      padding: 3px 6px;
       border-top: 1px solid #ddd;
-      font-size: 11px;
+      font-size: 10px;
       color: #555;
       background: #fafafa;
+      text-align: center;
     }
   </style>
 </head>
@@ -101,11 +116,11 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Graffiti taškai (statusas = 3)</div>
+      <div id="sidebar-header">Taškai (st.=3)</div>
       <input
         id="filter"
         type="text"
-        placeholder="Filtruoti pagal ID / adresą..."
+        placeholder="Filtruoti..."
       />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
@@ -117,21 +132,14 @@
 
   <script>
     // ===== KONFIGŪRACIJA =====
-
-    // tavo naujas Feature Service
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/redmine_map/FeatureServer/0";
-
-    // čia filtras – rodom tik statusas = 3 (Vykdoma (Rangovai))
     const whereClause = "statusas = 3";
-
-    // kurie atributai naudojami kaip pavadinimas ir adresas sąraše
     const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
     const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
 
     // ===== ŽEMĖLAPIO SUKŪRIMAS =====
-    const map = L.map("map").setView([54.6905, 25.2799], 12); // Vilnius
-
+    const map = L.map("map").setView([54.6905, 25.2799], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
@@ -140,10 +148,8 @@
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
     const statusBar = document.getElementById("status-bar");
+    let allItems = [];
 
-    let allItems = []; // {marker, rowEl, attrs, lat, lon}
-
-    // ===== PAGALBINĖS FUNKCIJOS =====
     function pickField(attrs, candidates) {
       for (const c of candidates) {
         if (c in attrs && attrs[c] != null && attrs[c] !== "") return c;
@@ -156,7 +162,7 @@
         where: whereClause,
         outFields: "*",
         returnGeometry: "true",
-        outSR: "4326", // lat/lon
+        outSR: "4326",
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -164,159 +170,81 @@
 
     function renderList(items) {
       listEl.innerHTML = "";
-      items.forEach((item) => {
-        listEl.appendChild(item.rowEl);
-      });
-      statusBar.textContent = "Rodomi " + items.length + " objektai (statusas = 3)";
+      items.forEach((item) => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
     }
 
     function applyFilter() {
       const q = filterInput.value.trim().toLowerCase();
-      if (!q) {
-        renderList(allItems);
-        return;
-      }
-      const filtered = allItems.filter((item) => {
-        const text = (item.searchText || "").toString().toLowerCase();
-        return text.includes(q);
-      });
+      if (!q) return renderList(allItems);
+      const filtered = allItems.filter((item) =>
+        (item.searchText || "").toLowerCase().includes(q)
+      );
       renderList(filtered);
     }
 
-    // ===== DUOMENŲ KROVIMAS IŠ ARCGIS =====
     async function loadData() {
       try {
-        const url = createQueryUrl();
-        console.log("Klausiu:", url);
-        const resp = await fetch(url);
+        const resp = await fetch(createQueryUrl());
         const data = await resp.json();
-
-        console.log("Gautas data:", data);
-        console.log("features count:", data.features && data.features.length);
-
-        if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
-          statusBar.textContent = "Nerasta jokių objektų (statusas = 3)";
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Nerasta objektų";
           return;
         }
 
         const markers = [];
         data.features.forEach((f) => {
-          const attrs = f.attributes || {};
-          const geom = f.geometry;
+          const a = f.attributes || {};
+          if (a.statusas !== 3) return;
+          const g = f.geometry;
+          if (!g || g.x == null || g.y == null) return;
+          const lat = g.y, lon = g.x;
+          const marker = L.marker([lat, lon]).addTo(map);
 
-          if (!geom || geom.x == null || geom.y == null) {
-            return;
-          }
+          const title = a.ID || a.OBJECTID || "Objektas";
+          const address = a.adresas || "";
+          marker.bindPopup(`<b>${title}</b><br>${address}<br>statusas=3`);
 
-          const lon = geom.x;
-          const lat = geom.y;
-          const latLng = [lat, lon];
-
-          // Marker
-          const marker = L.marker(latLng).addTo(map);
-
-          const titleField = pickField(attrs, titleFieldCandidates);
-          const addrField = pickField(attrs, addressFieldCandidates);
-
-          const title =
-            (titleField && attrs[titleField]) ||
-            "Objektas #" + (attrs.OBJECTID || "");
-          const address = addrField ? attrs[addrField] : "";
-
-          const popupHtml =
-            "<b>" +
-            title +
-            "</b><br/>" +
-            (address ? address + "<br/>" : "") +
-            "Lat: " +
-            lat.toFixed(6) +
-            "<br/>Lon: " +
-            lon.toFixed(6) +
-            "<br/>statusas = " +
-            (attrs.statusas !== undefined ? attrs.statusas : "");
-
-          marker.bindPopup(popupHtml);
-
-          // Eilutė sąraše
           const row = document.createElement("div");
           row.className = "feature-row";
+          row.innerHTML = `<div class='row-title'>${title}</div>
+                           <div class='row-sub'>${address}</div>
+                           <div class='row-coords'>${lat.toFixed(5)}, ${lon.toFixed(5)}</div>`;
 
-          const titleEl = document.createElement("div");
-          titleEl.className = "row-title";
-          titleEl.textContent = title;
-
-          const subEl = document.createElement("div");
-          subEl.className = "row-sub";
-          subEl.textContent = address || "(be adreso)";
-
-          const coordsEl = document.createElement("div");
-          coordsEl.className = "row-coords";
-          coordsEl.textContent =
-            "Lat: " +
-            lat.toFixed(6) +
-            " | Lon: " +
-            lon.toFixed(6);
-
-          row.appendChild(titleEl);
-          row.appendChild(subEl);
-          row.appendChild(coordsEl);
-
-          // Kliko sąsajos
-          row.addEventListener("click", () => {
-            map.setView(latLng, 18);
+          row.onclick = () => {
+            map.setView([lat, lon], 18);
             marker.openPopup();
-
-            document
-              .querySelectorAll(".feature-row.active")
-              .forEach((el) => el.classList.remove("active"));
+            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
             row.classList.add("active");
-          });
+          };
 
           marker.on("click", () => {
-            row.scrollIntoView({
-              behavior: "smooth",
-              block: "center"
-            });
-            document
-              .querySelectorAll(".feature-row.active")
-              .forEach((el) => el.classList.remove("active"));
+            row.scrollIntoView({behavior: "smooth", block: "center"});
+            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
             row.classList.add("active");
           });
-
-          const searchText =
-            title +
-            " " +
-            address +
-            " " +
-            JSON.stringify(attrs);
 
           allItems.push({
             marker,
             rowEl: row,
-            attrs,
-            lat,
-            lon,
-            searchText
+            searchText: `${title} ${address} ${JSON.stringify(a)}`
           });
-
           markers.push(marker);
         });
 
-        if (markers.length > 0) {
-          const group = L.featureGroup(markers);
-          map.fitBounds(group.getBounds().pad(0.1));
+        if (markers.length) {
+          const g = L.featureGroup(markers);
+          map.fitBounds(g.getBounds().pad(0.1));
         }
 
         renderList(allItems);
       } catch (e) {
         console.error(e);
-        statusBar.textContent =
-          "Klaida skaitant duomenis (žiūrėk Console)";
+        statusBar.textContent = "Klaida įkeliant duomenis";
       }
     }
 
     filterInput.addEventListener("input", applyFilter);
-
     loadData();
   </script>
 </body>
