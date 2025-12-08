@@ -2,8 +2,9 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – vykdomi darbai</title>
+  <title>Graffiti – vykdomi darbai (statusas = 3)</title>
 
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
@@ -108,7 +109,7 @@
       text-align: center;
     }
 
-    /* 🔸 automatinis paslėpimas kai plotis < 1000px */
+    /* mažame ekrane sąrašą slepiam */
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -121,21 +122,24 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Taškai (st.=3)</div>
+      <div id="sidebar-header">Taškai (statusas = 3)</div>
       <input id="filter" type="text" placeholder="Filtruoti..." />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
     </div>
   </div>
 
+  <!-- Leaflet JS -->
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
+    // ArcGIS FeatureService (naujas variantas)
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/redmine_map/FeatureServer/0";
-    const whereClause = "statusas = 3";
-    const titleFieldCandidates = ["ID", "OBJECTID", "GlobalID"];
-    const addressFieldCandidates = ["adresas", "Adresas", "ADRESAS"];
+
+    // Serveriui siunčiam paprasčiausią sąlygą – atsinešam viską,
+    // o statusas = 3 filtruosim jau JS'e
+    const whereClause = "1=1";
 
     const map = L.map("map").setView([54.6905, 25.2799], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -143,24 +147,18 @@
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    const listEl = document.getElementById("list");
+    const listEl     = document.getElementById("list");
     const filterInput = document.getElementById("filter");
-    const statusBar = document.getElementById("status-bar");
-    let allItems = [];
+    const statusBar  = document.getElementById("status-bar");
 
-    function pickField(attrs, candidates) {
-      for (const c of candidates) {
-        if (c in attrs && attrs[c] != null && attrs[c] !== "") return c;
-      }
-      return null;
-    }
+    let allItems = [];   // {marker, rowEl, searchText}
 
     function createQueryUrl() {
       const params = new URLSearchParams({
         where: whereClause,
-        outFields: "*",
+        outFields: "*",           // pasiimam visus laukus
         returnGeometry: "true",
-        outSR: "4326",
+        outSR: "4326",           // konvertuoja į WGS84 (lat/lon)
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -170,12 +168,15 @@
       if (!listEl) return;
       listEl.innerHTML = "";
       items.forEach((item) => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomi " + items.length + " objektai";
+      statusBar.textContent = "Rodomi " + items.length + " objektai (statusas = 3)";
     }
 
     function applyFilter() {
-      const q = filterInput.value.trim().toLowerCase();
-      if (!q) return renderList(allItems);
+      const q = (filterInput.value || "").trim().toLowerCase();
+      if (!q) {
+        renderList(allItems);
+        return;
+      }
       const filtered = allItems.filter((item) =>
         (item.searchText || "").toLowerCase().includes(q)
       );
@@ -186,65 +187,116 @@
       try {
         const resp = await fetch(createQueryUrl());
         const data = await resp.json();
+
         if (!data.features || !data.features.length) {
-          statusBar.textContent = "Nerasta objektų";
+          statusBar.textContent = "Servise nėra objektų";
           return;
         }
 
         const markers = [];
+
         data.features.forEach((f) => {
           const a = f.attributes || {};
-          if (a.statusas !== 3) return;
           const g = f.geometry;
+
+          // rodome tik statusas = 3
+          if (a.statusas !== 3) return;
           if (!g || g.x == null || g.y == null) return;
-          const lat = g.y, lon = g.x;
-          const marker = L.marker([lat, lon]).addTo(map);
 
-          const title = a.ID || a.OBJECTID || "Objektas";
+          const lat = g.y;
+          const lon = g.x;
+          const latLng = [lat, lon];
+
+          // pavadinimas – tiesiog „Graffiti #OBJECTID“
+          const oid = a.OBJECTID;
+          const title = oid != null ? ("Graffiti #" + oid) : "Graffiti objektas";
+
           const address = a.adresas || "";
-          marker.bindPopup(`<b>${title}</b><br>${address}<br>statusas=3`);
+          const tvarkTipas = a.tvark_tipas != null ? a.tvark_tipas : "";
 
-          if (!listEl) return;
+          const marker = L.marker(latLng).addTo(map);
+
+          const popupHtml =
+            "<b>" + title + "</b><br>" +
+            (address ? (address + "<br>") : "") +
+            "statusas = " + a.statusas +
+            (tvarkTipas !== "" ? ("<br>tvark_tipas = " + tvarkTipas) : "");
+
+          marker.bindPopup(popupHtml);
+
+          // eilutė dešinėje
           const row = document.createElement("div");
           row.className = "feature-row";
-          row.innerHTML = `<div class='row-title'>${title}</div>
-                           <div class='row-sub'>${address}</div>
-                           <div class='row-coords'>${lat.toFixed(5)}, ${lon.toFixed(5)}</div>`;
 
-          row.onclick = () => {
-            map.setView([lat, lon], 18);
+          const titleEl = document.createElement("div");
+          titleEl.className = "row-title";
+          titleEl.textContent = title;
+
+          const subEl = document.createElement("div");
+          subEl.className = "row-sub";
+          subEl.textContent = address || "(be adreso)";
+
+          const coordsEl = document.createElement("div");
+          coordsEl.className = "row-coords";
+          coordsEl.textContent =
+            lat.toFixed(5) + ", " + lon.toFixed(5);
+
+          row.appendChild(titleEl);
+          row.appendChild(subEl);
+          row.appendChild(coordsEl);
+
+          // sąsaja – paspaudi eilutę → zoom į markerį
+          row.addEventListener("click", () => {
+            map.setView(latLng, 18);
             marker.openPopup();
-            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
-            row.classList.add("active");
-          };
-
-          marker.on("click", () => {
-            row.scrollIntoView({behavior: "smooth", block: "center"});
-            document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
             row.classList.add("active");
           });
+
+          // paspaudi markerį → išskrolina eilutę
+          marker.on("click", () => {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          const searchText =
+            title + " " + address + " " + JSON.stringify(a);
 
           allItems.push({
             marker,
             rowEl: row,
-            searchText: `${title} ${address} ${JSON.stringify(a)}`
+            searchText
           });
+
           markers.push(marker);
         });
 
-        if (markers.length) {
-          const g = L.featureGroup(markers);
-          map.fitBounds(g.getBounds().pad(0.1));
+        if (!markers.length) {
+          statusBar.textContent =
+            "Nerasta objektų su statusas = 3";
+          return;
         }
+
+        // pritraukiam prie visų taškų
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
 
         renderList(allItems);
       } catch (e) {
         console.error(e);
-        statusBar.textContent = "Klaida įkeliant duomenis";
+        statusBar.textContent = "Klaida skaitant duomenis (žiūrėk Console)";
       }
     }
 
-    if (filterInput) filterInput.addEventListener("input", applyFilter);
+    if (filterInput) {
+      filterInput.addEventListener("input", applyFilter);
+    }
+
     loadData();
   </script>
 </body>
