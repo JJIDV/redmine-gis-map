@@ -2,22 +2,12 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Vilniaus užduotys (statusai 1, 4, 6)</title>
+  <title>Užduotys (statusai 1, 4, 6)</title>
 
   <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-  />
-
-  <!-- MarkerCluster CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-  />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
   />
 
   <style>
@@ -38,6 +28,7 @@
       flex: 1;
     }
 
+    /* siauras šoninis sąrašas dešinėje, jei norėsi vėliau praplėsti funkcijas */
     #sidebar {
       flex: 0 0 180px;
       max-width: 180px;
@@ -45,7 +36,6 @@
       display: flex;
       flex-direction: column;
       font-size: 12px;
-      background: #fff;
     }
 
     #sidebar-header {
@@ -102,9 +92,10 @@
       text-overflow: ellipsis;
     }
 
-    .row-sub2 {
+    .row-coords {
       color: #777;
-      font-size: 11px;
+      font-size: 10px;
+      margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -119,7 +110,7 @@
       text-align: center;
     }
 
-    /* slepiam šoninę juostą mažam ekranui */
+    /* telefone sąrašas visai slepiasi, paliekam tik žemėlapį */
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -132,8 +123,8 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Užduotys (st. 1, 4, 6)</div>
-      <input id="filter" type="text" placeholder="Filtruoti pagal įmonę / statusą..." />
+      <div id="sidebar-header">Užduotys (statusai 1, 4, 6)</div>
+      <input id="filter" type="text" placeholder="Filtruoti pagal adresą / įmonę..." />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
     </div>
@@ -142,26 +133,16 @@
   <!-- Leaflet JS -->
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- MarkerCluster JS -->
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-
   <script>
-    // ===== KONFIGŪRACIJA =====
+    // === KONFIGŪRACIJA ===
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // rodome tik statusus 1, 4, 6  (sukurta, vykdoma, atlikta)
-    const whereClause = "Statusas IN (1, 4, 6)";
+    // filtrui: tik neuždarytos užduotys
+    const allowedStatusCodes = new Set([1, 4, 6]);
 
-    // statuso kodas -> tekstas
-    const statusLookup = {
-      1: "Vykdoma",
-      4: "Atlikta",
-      6: "Sukurta"
-    };
-
-    // Imone kodas -> tekstas
-    const companyLookup = {
+    // Imone kodų -> tekstinių pavadinimų žemėlapis
+    const companyMap = {
       0: "Nenurodyta",
       1: "VMSA",
       2: "SISP",
@@ -172,30 +153,35 @@
       7: "Gatas"
     };
 
-    // LKS -> WGS84 transformacija (EPSG:3346 -> EPSG:4326)
-    // Supaprastinta formulė, pakankama vizualizacijai
+    // Jei ArcGIS layeris LKS'e, čia perkonvertuojam į WGS84 (EPSG:4326)
+    // Konstanta pagal LKS94 projekciją (laikom, kad X/Y yra metrais).
     function lksToWgs(x, y) {
-      // Paimta iš tipinės LKS94->WGS84 konversijos (nadgrids nenaudojam – tik apytiksliai).
+      // prielaida: LKS = EPSG:3346 (Transverse Mercator). Čia apytikslė formulė.
+      // Jei kartais netikslu – geografinė vieta vis tiek bus "šalia Vilniaus".
       const a = 6378137.0;
       const f = 1 / 298.257223563;
-      const e2 = 2 * f - f * f;
-      const λ0 = 24 * Math.PI / 180;   // centrinis dienovidinis
       const k0 = 0.9998;
-      const x0 = 500000;
-      const y0 = 0;
+      const e2 = 2 * f - f * f;
+      const e4 = e2 * e2;
+      const e6 = e4 * e2;
 
-      const xx = (x - x0) / k0;
-      const yy = (y - y0) / k0;
+      // LKS94: central meridian 24E, false easting 500000
+      const lon0 = 24 * Math.PI / 180;
+      const xAdj = x - 500000;
+      const yAdj = y;
 
-      const m = yy;
-      const mu = m / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+      const M = yAdj / k0;
+      const mu =
+        M /
+        (a *
+          (1 - e2 / 4 - (3 * e4) / 64 - (5 * e6) / 256));
 
       const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
 
-      const j1 = 3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32;
-      const j2 = 21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32;
-      const j3 = 151 * Math.pow(e1, 3) / 96;
-      const j4 = 1097 * Math.pow(e1, 4) / 512;
+      const j1 = (3 * e1) / 2 - (27 * Math.pow(e1, 3)) / 32;
+      const j2 = (21 * e1 * e1) / 16 - (55 * Math.pow(e1, 4)) / 32;
+      const j3 = (151 * Math.pow(e1, 3)) / 96;
+      const j4 = (1097 * Math.pow(e1, 4)) / 512;
 
       const fp =
         mu +
@@ -206,67 +192,62 @@
 
       const sinfp = Math.sin(fp);
       const cosfp = Math.cos(fp);
-
       const tanfp = Math.tan(fp);
 
-      const c1 = e2 / (1 - e2) * cosfp * cosfp;
-      const t1 = tanfp * tanfp;
-      const r1 =
-        a * (1 - e2) /
+      const C1 = e2 / (1 - e2) * cosfp * cosfp;
+      const T1 = tanfp * tanfp;
+      const R1 =
+        (a * (1 - e2)) /
         Math.pow(1 - e2 * sinfp * sinfp, 1.5);
-      const n1 = a / Math.sqrt(1 - e2 * sinfp * sinfp);
+      const N1 =
+        a / Math.sqrt(1 - e2 * sinfp * sinfp);
 
-      const d = xx / n1;
+      const D = xAdj / (N1 * k0);
 
-      const q1 = (n1 * tanfp) / r1;
-      const q2 =
-        (d * d) / 2;
-      const q3 =
-        (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * e2 / (1 - e2)) *
-        Math.pow(d, 4) / 24;
-      const q4 =
-        (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * e2 / (1 - e2) - 3 * c1 * c1) *
-        Math.pow(d, 6) / 720;
-
-      const lat =
+      let lat =
         fp -
-        q1 * (q2 - q3 + q4);
+        ((N1 * tanfp) / R1) *
+          (D * D / 2 -
+            (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * e2) *
+              Math.pow(D, 4) /
+              24 +
+            (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * e2 - 3 * C1 * C1) *
+              Math.pow(D, 6) /
+              720);
 
-      const q5 = d;
-      const q6 =
-        (1 + 2 * t1 + c1) * Math.pow(d, 3) / 6;
-      const q7 =
-        (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * e2 / (1 - e2) + 24 * t1 * t1) *
-        Math.pow(d, 5) / 120;
+      let lon =
+        lon0 +
+        (D -
+          (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 +
+          (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * e2 + 24 * T1 * T1) *
+            Math.pow(D, 5) /
+            120) /
+          cosfp;
 
-      const lon =
-        λ0 +
-        (q5 - q6 + q7) / cosfp;
+      lat = (lat * 180) / Math.PI;
+      lon = (lon * 180) / Math.PI;
 
-      return [lat * 180 / Math.PI, lon * 180 / Math.PI];
+      return { lat, lon };
     }
 
-    // ===== ŽEMĖLAPIS =====
-    const map = L.map("map").setView([54.69, 25.28], 12);
-
+    const map = L.map("map").setView([54.6905, 25.2799], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // Klasterių grupė
-    const clusterGroup = L.markerClusterGroup();
-
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
     const statusBar = document.getElementById("status-bar");
-    let allItems = []; // { marker, rowEl, searchText }
+    let allItems = [];
 
     function createQueryUrl() {
+      // be where– filtro – viską filtruosim JS'e
       const params = new URLSearchParams({
-        where: whereClause,
+        where: "1=1",
         outFields: "*",
         returnGeometry: "true",
+        outSR: "3346", // LKS94
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -276,11 +257,11 @@
       if (!listEl) return;
       listEl.innerHTML = "";
       items.forEach((item) => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomos " + items.length + " užduotys (statusai 1, 4, 6)";
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
     }
 
     function applyFilter() {
-      const q = filterInput.value.trim().toLowerCase();
+      const q = (filterInput?.value || "").trim().toLowerCase();
       if (!q) return renderList(allItems);
       const filtered = allItems.filter((item) =>
         (item.searchText || "").toLowerCase().includes(q)
@@ -292,89 +273,109 @@
       try {
         const url = createQueryUrl();
         console.log("Query URL:", url);
+
         const resp = await fetch(url);
         const data = await resp.json();
-        console.log("Received data sample:", data.features && data.features[0]);
 
-        if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
-          statusBar.textContent = "Nerasta jokių užduočių";
+        if (data.error) {
+          console.error("ArcGIS error:", data.error);
+          statusBar.textContent = "Klaida skaitant duomenis (žiūrėk Console)";
           return;
         }
 
-        const markers = [];
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Nerasta objektų (statusai 1, 4, 6)";
+          return;
+        }
 
+        console.log("Gauti objektai:", data.features.length);
+
+        const markers = [];
         data.features.forEach((f) => {
-          const a = f.attributes || {};
+          const attrs = f.attributes || {};
           const geom = f.geometry;
 
           if (!geom || !geom.rings || !geom.rings.length) return;
 
-          // skaičiuojam poligono "centrą" (paprasta koordinacių vidurkio aproksimacija)
+          // paimam 1-ą žiedo tašką apskaičiuot centroidui (supaprastinta)
+          const ring = geom.rings[0];
+
           let sumX = 0;
           let sumY = 0;
-          let count = 0;
-          geom.rings[0].forEach((pt) => {
-            sumX += pt[0];
-            sumY += pt[1];
-            count++;
+          ring.forEach((p) => {
+            sumX += p[0];
+            sumY += p[1];
           });
-          if (!count) return;
-          const cx = sumX / count;
-          const cy = sumY / count;
+          const cx = sumX / ring.length;
+          const cy = sumY / ring.length;
 
-          const [lat, lon] = lksToWgs(cx, cy);
+          const { lat, lon } = lksToWgs(cx, cy);
+          if (!isFinite(lat) || !isFinite(lon)) return;
 
-          const statusCode = a.Statusas;
-          const statusText = statusLookup[statusCode] || ("Kodas: " + statusCode);
-          const companyCode = a.Imone;
-          const companyText = companyLookup[companyCode] || ("Kodas: " + companyCode);
-          const id = a.OBJECTID;
+          // --- Statuso filtravimas JS'e ---
+          const statusVal =
+            attrs.Statusas ??
+            attrs.statusas ??
+            attrs.STATUSAS;
 
-          const popupHtml =
-            `<b>Užduotis #${id}</b><br/>` +
-            `Įmonė: ${companyText}<br/>` +
-            `Statusas: ${statusText}<br/>` +
-            `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
+          if (!allowedStatusCodes.has(Number(statusVal))) return;
 
-          const marker = L.marker([lat, lon]);
+          // Įmonė iš kodo
+          const companyCode =
+            attrs.Imone ??
+            attrs.imone ??
+            attrs.IMONE;
+
+          const companyName =
+            companyMap[Number(companyCode)] ?? "Nežinoma įmonė";
+
+          const marker = L.marker([lat, lon]).addTo(map);
+
+          const title = `Užduotis #${attrs.OBJECTID ?? ""}`;
+          const statusText = String(statusVal);
+          const popupHtml = `
+            <b>${title}</b><br/>
+            Įmonė: ${companyName}<br/>
+            Statusas (kodas): ${statusText}<br/>
+            Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}
+          `;
+
           marker.bindPopup(popupHtml);
-
-          clusterGroup.addLayer(marker);
-          markers.push(marker);
 
           if (!listEl) return;
 
-          // Eilutė sąraše
+          const address =
+            attrs.adresas ??
+            attrs.Adresas ??
+            attrs.ADRESAS ??
+            "";
+
           const row = document.createElement("div");
           row.className = "feature-row";
 
-          const titleEl = document.createElement("div");
-          titleEl.className = "row-title";
-          titleEl.textContent = "Užduotis #" + id;
-
-          const subEl = document.createElement("div");
-          subEl.className = "row-sub";
-          subEl.textContent = "Įmonė: " + companyText;
-
-          const sub2El = document.createElement("div");
-          sub2El.className = "row-sub2";
-          sub2El.textContent = "Statusas: " + statusText;
-
-          row.appendChild(titleEl);
-          row.appendChild(subEl);
-          row.appendChild(sub2El);
+          row.innerHTML = `
+            <div class="row-title">${companyName}</div>
+            <div class="row-sub">${address || "(be adreso)"}</div>
+            <div class="row-coords">
+              Statusas: ${statusText} | Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(
+            5
+          )}
+            </div>
+          `;
 
           row.addEventListener("click", () => {
             map.setView([lat, lon], 18);
             marker.openPopup();
-            document.querySelectorAll(".feature-row.active")
+            document
+              .querySelectorAll(".feature-row.active")
               .forEach((el) => el.classList.remove("active"));
             row.classList.add("active");
           });
 
           marker.on("click", () => {
             row.scrollIntoView({ behavior: "smooth", block: "center" });
-            document.querySelectorAll(".feature-row.active")
+            document
+              .querySelectorAll(".feature-row.active")
               .forEach((el) => el.classList.remove("active"));
             row.classList.add("active");
           });
@@ -382,11 +383,16 @@
           allItems.push({
             marker,
             rowEl: row,
-            searchText: `${id} ${companyText} ${statusText}`
+            searchText:
+              companyName +
+              " " +
+              address +
+              " " +
+              JSON.stringify(attrs)
           });
-        });
 
-        map.addLayer(clusterGroup);
+          markers.push(marker);
+        });
 
         if (markers.length) {
           const group = L.featureGroup(markers);
@@ -401,7 +407,6 @@
     }
 
     if (filterInput) filterInput.addEventListener("input", applyFilter);
-
     loadData();
   </script>
 </body>
