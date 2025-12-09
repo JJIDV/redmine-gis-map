@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Vilniaus užduočių žemėlapis (Statusas 1,4,6)</title>
+  <title>Užduotys (statusai 1, 4, 6)</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -14,32 +14,135 @@
     html, body {
       height: 100%;
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+
+    #app {
+      display: flex;
+      height: 100%;
+      width: 100%;
     }
 
     #map {
-      height: 100%;
-      width: 100%;
+      flex: 1;
+    }
+
+    /* siauras šoninis sąrašas dešinėje, jei norėsi vėliau praplėsti funkcijas */
+    #sidebar {
+      flex: 0 0 180px;
+      max-width: 180px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+    }
+
+    #sidebar-header {
+      padding: 6px 8px;
+      border-bottom: 1px solid #ddd;
+      background: #f7f7f7;
+      font-weight: 600;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #filter {
+      padding: 4px 6px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 12px;
+    }
+
+    #list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    .feature-row {
+      padding: 4px 6px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .feature-row:hover {
+      background: #f0f8ff;
+    }
+
+    .feature-row.active {
+      background: #e6f2ff;
+    }
+
+    .row-title {
+      font-weight: 600;
+      margin-bottom: 1px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-sub {
+      color: #555;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-coords {
+      color: #777;
+      font-size: 10px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #status-bar {
+      padding: 3px 6px;
+      border-top: 1px solid #ddd;
+      font-size: 10px;
+      color: #555;
+      background: #fafafa;
+      text-align: center;
+    }
+
+    /* telefone sąrašas visai slepiasi, paliekam tik žemėlapį */
+    @media (max-width: 600px) {
+      #sidebar {
+        display: none;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">Užduotys (statusai 1, 4, 6)</div>
+      <input id="filter" type="text" placeholder="Filtruoti pagal adresą / įmonę..." />
+      <div id="list"></div>
+      <div id="status-bar">Kraunama...</div>
+    </div>
+  </div>
 
   <!-- Leaflet JS -->
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ===== KONFIGŪRACIJA =====
+    // === KONFIGŪRACIJA ===
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // Filtruojame tik neuždarytas užduotis:
-    // 1 – Vykdoma, 4 – Atlikta, 6 – Sukurta
-    const whereClause = "Statusas IN (1, 4, 6)";
+    // filtrui: tik neuždarytos užduotys
+    const allowedStatusCodes = new Set([1, 4, 6]);
 
-    // Imone kodo -> pavadinimo žodynas
-    const companyNames = {
+    // Imone kodų -> tekstinių pavadinimų žemėlapis
+    const companyMap = {
       0: "Nenurodyta",
       1: "VMSA",
       2: "SISP",
@@ -50,75 +153,122 @@
       7: "Gatas"
     };
 
-    // Statuso kodo -> teksto žodynas (jei reikės)
-    const statusNames = {
-      1: "Vykdoma",
-      4: "Atlikta",
-      6: "Sukurta"
-    };
+    // Jei ArcGIS layeris LKS'e, čia perkonvertuojam į WGS84 (EPSG:4326)
+    // Konstanta pagal LKS94 projekciją (laikom, kad X/Y yra metrais).
+    function lksToWgs(x, y) {
+      // prielaida: LKS = EPSG:3346 (Transverse Mercator). Čia apytikslė formulė.
+      // Jei kartais netikslu – geografinė vieta vis tiek bus "šalia Vilniaus".
+      const a = 6378137.0;
+      const f = 1 / 298.257223563;
+      const k0 = 0.9998;
+      const e2 = 2 * f - f * f;
+      const e4 = e2 * e2;
+      const e6 = e4 * e2;
 
-    // ===== ŽEMĖLAPIS =====
-    const map = L.map("map").setView([54.6872, 25.2797], 11); // Vilnius
+      // LKS94: central meridian 24E, false easting 500000
+      const lon0 = 24 * Math.PI / 180;
+      const xAdj = x - 500000;
+      const yAdj = y;
 
+      const M = yAdj / k0;
+      const mu =
+        M /
+        (a *
+          (1 - e2 / 4 - (3 * e4) / 64 - (5 * e6) / 256));
+
+      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+      const j1 = (3 * e1) / 2 - (27 * Math.pow(e1, 3)) / 32;
+      const j2 = (21 * e1 * e1) / 16 - (55 * Math.pow(e1, 4)) / 32;
+      const j3 = (151 * Math.pow(e1, 3)) / 96;
+      const j4 = (1097 * Math.pow(e1, 4)) / 512;
+
+      const fp =
+        mu +
+        j1 * Math.sin(2 * mu) +
+        j2 * Math.sin(4 * mu) +
+        j3 * Math.sin(6 * mu) +
+        j4 * Math.sin(8 * mu);
+
+      const sinfp = Math.sin(fp);
+      const cosfp = Math.cos(fp);
+      const tanfp = Math.tan(fp);
+
+      const C1 = e2 / (1 - e2) * cosfp * cosfp;
+      const T1 = tanfp * tanfp;
+      const R1 =
+        (a * (1 - e2)) /
+        Math.pow(1 - e2 * sinfp * sinfp, 1.5);
+      const N1 =
+        a / Math.sqrt(1 - e2 * sinfp * sinfp);
+
+      const D = xAdj / (N1 * k0);
+
+      let lat =
+        fp -
+        ((N1 * tanfp) / R1) *
+          (D * D / 2 -
+            (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * e2) *
+              Math.pow(D, 4) /
+              24 +
+            (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * e2 - 3 * C1 * C1) *
+              Math.pow(D, 6) /
+              720);
+
+      let lon =
+        lon0 +
+        (D -
+          (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 +
+          (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * e2 + 24 * T1 * T1) *
+            Math.pow(D, 5) /
+            120) /
+          cosfp;
+
+      lat = (lat * 180) / Math.PI;
+      lon = (lon * 180) / Math.PI;
+
+      return { lat, lon };
+    }
+
+    const map = L.map("map").setView([54.6905, 25.2799], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // ===== PAGALBINĖS FUNKCIJOS =====
-
-    // Centroidas paprastam poligonui (pirmam žiedui)
-    function polygonCentroid(rings) {
-      // tikimės: rings = [ [ [x1,y1], [x2,y2], ... ] , ... ]
-      if (!rings || !rings.length || !rings[0].length) return null;
-      const pts = rings[0];
-
-      let twiceArea = 0;
-      let x = 0;
-      let y = 0;
-      const n = pts.length;
-
-      for (let i = 0; i < n - 1; i++) {
-        const xi = pts[i][0];
-        const yi = pts[i][1];
-        const xj = pts[i + 1][0];
-        const yj = pts[i + 1][1];
-        const a = xi * yj - xj * yi;
-        twiceArea += a;
-        x += (xi + xj) * a;
-        y += (yi + yj) * a;
-      }
-
-      if (twiceArea === 0) {
-        return { x: pts[0][0], y: pts[0][1] };
-      }
-
-      const factor = 1 / (3 * twiceArea);
-      return { x: x * factor, y: y * factor };
-    }
-
-    // LKS94 -> WGS84 (apytikslis, pakanka vizualizacijai)
-    function lksToWgs(x, y) {
-      const x0 = 500000;
-      const y0 = 0;
-      const lon = (x - x0) * 0.0000105 + 24.0;
-      const lat = (y - y0) * 0.0000065 + 54.5;
-      return { lat, lon };
-    }
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar = document.getElementById("status-bar");
+    let allItems = [];
 
     function createQueryUrl() {
+      // be where– filtro – viską filtruosim JS'e
       const params = new URLSearchParams({
-        where: whereClause,
+        where: "1=1",
         outFields: "*",
         returnGeometry: "true",
+        outSR: "3346", // LKS94
         f: "pjson"
-        // Jei norėtum, kad serveris pats perprojektuotų:
-        // outSR: "4326"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
     }
 
-    // ===== DUOMENŲ KROVIMAS =====
+    function renderList(items) {
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      items.forEach((item) => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
+    }
+
+    function applyFilter() {
+      const q = (filterInput?.value || "").trim().toLowerCase();
+      if (!q) return renderList(allItems);
+      const filtered = allItems.filter((item) =>
+        (item.searchText || "").toLowerCase().includes(q)
+      );
+      renderList(filtered);
+    }
+
     async function loadData() {
       try {
         const url = createQueryUrl();
@@ -126,55 +276,137 @@
 
         const resp = await fetch(url);
         const data = await resp.json();
-        console.log("Received data sample:", data);
 
-        if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
-          console.warn("Nerasta jokių objektų pagal sąlygą:", whereClause);
+        if (data.error) {
+          console.error("ArcGIS error:", data.error);
+          statusBar.textContent = "Klaida skaitant duomenis (žiūrėk Console)";
           return;
         }
 
-        const markers = [];
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Nerasta objektų (statusai 1, 4, 6)";
+          return;
+        }
 
+        console.log("Gauti objektai:", data.features.length);
+
+        const markers = [];
         data.features.forEach((f) => {
           const attrs = f.attributes || {};
           const geom = f.geometry;
 
-          if (!geom || !geom.rings) return;
+          if (!geom || !geom.rings || !geom.rings.length) return;
 
-          const c = polygonCentroid(geom.rings);
-          if (!c) return;
+          // paimam 1-ą žiedo tašką apskaičiuot centroidui (supaprastinta)
+          const ring = geom.rings[0];
 
-          // Konvertuojame iš LKS į WGS
-          const { lat, lon } = lksToWgs(c.x, c.y);
+          let sumX = 0;
+          let sumY = 0;
+          ring.forEach((p) => {
+            sumX += p[0];
+            sumY += p[1];
+          });
+          const cx = sumX / ring.length;
+          const cy = sumY / ring.length;
 
-          const statusCode = attrs.Statusas;
-          const companyCode = attrs.Imone;
+          const { lat, lon } = lksToWgs(cx, cy);
+          if (!isFinite(lat) || !isFinite(lon)) return;
 
-          const statusText = statusNames[statusCode] || `Statusas ${statusCode}`;
-          const companyText = companyNames[companyCode] || `Imonė kodas ${companyCode}`;
+          // --- Statuso filtravimas JS'e ---
+          const statusVal =
+            attrs.Statusas ??
+            attrs.statusas ??
+            attrs.STATUSAS;
 
+          if (!allowedStatusCodes.has(Number(statusVal))) return;
+
+          // Įmonė iš kodo
+          const companyCode =
+            attrs.Imone ??
+            attrs.imone ??
+            attrs.IMONE;
+
+          const companyName =
+            companyMap[Number(companyCode)] ?? "Nežinoma įmonė";
+
+          const marker = L.marker([lat, lon]).addTo(map);
+
+          const title = `Užduotis #${attrs.OBJECTID ?? ""}`;
+          const statusText = String(statusVal);
           const popupHtml = `
-            <b>${companyText}</b><br/>
-            Statusas: <b>${statusText}</b> (kodas: ${statusCode})<br/>
+            <b>${title}</b><br/>
+            Įmonė: ${companyName}<br/>
+            Statusas (kodas): ${statusText}<br/>
             Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}
           `;
 
-          const marker = L.marker([lat, lon]).addTo(map);
           marker.bindPopup(popupHtml);
+
+          if (!listEl) return;
+
+          const address =
+            attrs.adresas ??
+            attrs.Adresas ??
+            attrs.ADRESAS ??
+            "";
+
+          const row = document.createElement("div");
+          row.className = "feature-row";
+
+          row.innerHTML = `
+            <div class="row-title">${companyName}</div>
+            <div class="row-sub">${address || "(be adreso)"}</div>
+            <div class="row-coords">
+              Statusas: ${statusText} | Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(
+            5
+          )}
+            </div>
+          `;
+
+          row.addEventListener("click", () => {
+            map.setView([lat, lon], 18);
+            marker.openPopup();
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          marker.on("click", () => {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          allItems.push({
+            marker,
+            rowEl: row,
+            searchText:
+              companyName +
+              " " +
+              address +
+              " " +
+              JSON.stringify(attrs)
+          });
 
           markers.push(marker);
         });
 
-        // priartiname vaizdą prie visų taškų
         if (markers.length) {
           const group = L.featureGroup(markers);
           map.fitBounds(group.getBounds().pad(0.1));
         }
+
+        renderList(allItems);
       } catch (e) {
-        console.error("Klaida skaitant duomenis:", e);
+        console.error(e);
+        statusBar.textContent = "Klaida įkeliant duomenis (žiūrėk Console)";
       }
     }
 
+    if (filterInput) filterInput.addEventListener("input", applyFilter);
     loadData();
   </script>
 </body>
