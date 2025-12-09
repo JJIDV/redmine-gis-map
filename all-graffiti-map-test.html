@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <title>Graffiti – vykdomi darbai (statusas = 3)</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+
+    #app {
+      display: flex;
+      height: 100%;
+      width: 100%;
+    }
+
+    #map {
+      flex: 1;
+    }
+
+    #sidebar {
+      flex: 0 0 140px;
+      max-width: 140px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+    }
+
+    #sidebar-header {
+      padding: 6px 8px;
+      border-bottom: 1px solid #ddd;
+      background: #f7f7f7;
+      font-weight: 600;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #filter {
+      padding: 4px 6px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 12px;
+    }
+
+    #list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    .feature-row {
+      padding: 4px 6px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .feature-row:hover {
+      background: #f0f8ff;
+    }
+
+    .feature-row.active {
+      background: #e6f2ff;
+    }
+
+    .row-title {
+      font-weight: 600;
+      margin-bottom: 1px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-sub {
+      color: #555;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-coords {
+      color: #777;
+      font-size: 10px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #status-bar {
+      padding: 3px 6px;
+      border-top: 1px solid #ddd;
+      font-size: 10px;
+      color: #555;
+      background: #fafafa;
+      text-align: center;
+    }
+
+    /* mažame ekrane sąrašą slepiam */
+    @media (max-width: 600px) {
+      #sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">Taškai (statusas = 3)</div>
+      <input id="filter" type="text" placeholder="Filtruoti..." />
+      <div id="list"></div>
+      <div id="status-bar">Kraunama...</div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ArcGIS FeatureService (naujas variantas)
+    const arcgisLayerUrl =
+      "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/redmine_map/FeatureServer/0";
+
+    // Serveriui siunčiam paprasčiausią sąlygą – atsinešam viską,
+    // o statusas = 3 filtruosim jau JS'e
+    const whereClause = "1=1";
+
+    const map = L.map("map").setView([54.6905, 25.2799], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const listEl     = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar  = document.getElementById("status-bar");
+
+    let allItems = [];   // {marker, rowEl, searchText}
+
+    function createQueryUrl() {
+      const params = new URLSearchParams({
+        where: whereClause,
+        outFields: "*",           // pasiimam visus laukus
+        returnGeometry: "true",
+        outSR: "4326",           // konvertuoja į WGS84 (lat/lon)
+        f: "pjson"
+      });
+      return arcgisLayerUrl + "/query?" + params.toString();
+    }
+
+    function renderList(items) {
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      items.forEach((item) => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodomi " + items.length + " objektai (statusas = 3)";
+    }
+
+    function applyFilter() {
+      const q = (filterInput.value || "").trim().toLowerCase();
+      if (!q) {
+        renderList(allItems);
+        return;
+      }
+      const filtered = allItems.filter((item) =>
+        (item.searchText || "").toLowerCase().includes(q)
+      );
+      renderList(filtered);
+    }
+
+    async function loadData() {
+      try {
+        const resp = await fetch(createQueryUrl());
+        const data = await resp.json();
+
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Servise nėra objektų";
+          return;
+        }
+
+        const markers = [];
+
+        data.features.forEach((f) => {
+          const a = f.attributes || {};
+          const g = f.geometry;
+
+          // rodome tik statusas = 3
+          if (a.statusas !== 3) return;
+          if (!g || g.x == null || g.y == null) return;
+
+          const lat = g.y;
+          const lon = g.x;
+          const latLng = [lat, lon];
+
+          // pavadinimas – tiesiog „Graffiti #OBJECTID“
+          const oid = a.OBJECTID;
+          const title = oid != null ? ("Graffiti #" + oid) : "Graffiti objektas";
+
+          const address = a.adresas || "";
+          const tvarkTipas = a.tvark_tipas != null ? a.tvark_tipas : "";
+
+          const marker = L.marker(latLng).addTo(map);
+
+          const popupHtml =
+            "<b>" + title + "</b><br>" +
+            (address ? (address + "<br>") : "") +
+            "statusas = " + a.statusas +
+            (tvarkTipas !== "" ? ("<br>tvark_tipas = " + tvarkTipas) : "");
+
+          marker.bindPopup(popupHtml);
+
+          // eilutė dešinėje
+          const row = document.createElement("div");
+          row.className = "feature-row";
+
+          const titleEl = document.createElement("div");
+          titleEl.className = "row-title";
+          titleEl.textContent = title;
+
+          const subEl = document.createElement("div");
+          subEl.className = "row-sub";
+          subEl.textContent = address || "(be adreso)";
+
+          const coordsEl = document.createElement("div");
+          coordsEl.className = "row-coords";
+          coordsEl.textContent =
+            lat.toFixed(5) + ", " + lon.toFixed(5);
+
+          row.appendChild(titleEl);
+          row.appendChild(subEl);
+          row.appendChild(coordsEl);
+
+          // sąsaja – paspaudi eilutę → zoom į markerį
+          row.addEventListener("click", () => {
+            map.setView(latLng, 18);
+            marker.openPopup();
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          // paspaudi markerį → išskrolina eilutę
+          marker.on("click", () => {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          const searchText =
+            title + " " + address + " " + JSON.stringify(a);
+
+          allItems.push({
+            marker,
+            rowEl: row,
+            searchText
+          });
+
+          markers.push(marker);
+        });
+
+        if (!markers.length) {
+          statusBar.textContent =
+            "Nerasta objektų su statusas = 3";
+          return;
+        }
+
+        // pritraukiam prie visų taškų
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
+
+        renderList(allItems);
+      } catch (e) {
+        console.error(e);
+        statusBar.textContent = "Klaida skaitant duomenis (žiūrėk Console)";
+      }
+    }
+
+    if (filterInput) {
+      filterInput.addEventListener("input", applyFilter);
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
