@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <title>Eismo valdymo užduotys – PROJ_QL</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+
+    #app {
+      display: flex;
+      height: 100%;
+      width: 100%;
+    }
+
+    #map {
+      flex: 1;
+    }
+
+    #sidebar {
+      flex: 0 0 180px;
+      max-width: 220px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+      background: #fafafa;
+    }
+
+    #sidebar-header {
+      padding: 6px 8px;
+      border-bottom: 1px solid #ddd;
+      background: #f0f0f0;
+      font-weight: 600;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #filter {
+      padding: 4px 6px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 12px;
+    }
+
+    #list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 12px;
+      background: #fff;
+    }
+
+    .feature-row {
+      padding: 4px 6px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .feature-row:hover {
+      background: #f0f8ff;
+    }
+
+    .feature-row.active {
+      background: #e6f2ff;
+    }
+
+    .row-title {
+      font-weight: 600;
+      margin-bottom: 1px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-sub {
+      color: #555;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-extra {
+      color: #777;
+      font-size: 10px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #status-bar {
+      padding: 3px 6px;
+      border-top: 1px solid #ddd;
+      font-size: 10px;
+      color: #555;
+      background: #fafafa;
+      text-align: center;
+    }
+
+    /* mažame ekrane paslepiam sąrašą */
+    @media (max-width: 700px) {
+      #sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">Užduotys (statusas 1, 4, 6)</div>
+      <input id="filter" type="text" placeholder="Filtruoti..." />
+      <div id="list"></div>
+      <div id="status-bar">Kraunama...</div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ===== KONFIGŪRACIJA =====
+    const arcgisLayerUrl =
+      "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
+
+    // rodom tik statusas 1, 4, 6
+    const whereClause = "statusas IN (1,4,6)";
+
+    // Statuso kodas -> tekstas
+    const statusLookup = {
+      1: "Vykdoma",
+      4: "Atlikta",
+      6: "Sukurta"
+    };
+
+    // Įmonės kodas -> pavadinimas
+    const companyLookup = {
+      0: "Nenurodyta",
+      1: "VMSA",
+      2: "SISP",
+      3: "VVT",
+      4: "Grinda",
+      5: "Biseris",
+      6: "Maniga",
+      7: "Gatas"
+    };
+
+    // Kandidatai pavadinimo laukui sąraše/popup'e
+    const titleFieldCandidates = ["Pavadinimas", "pavadinimas", "OBJECTID"];
+    const addressFieldCandidates = ["Adresas", "adresas"];
+
+    // ===== ŽEMĖLAPIS =====
+    const map = L.map("map").setView([54.69, 25.27], 12); // Vilnius
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar = document.getElementById("status-bar");
+
+    let allItems = []; // {marker, rowEl, attrs, lat, lon, searchText}
+
+    // ===== PAGALBINĖS FUNKCIJOS =====
+    function pickField(attrs, candidates) {
+      for (const c of candidates) {
+        if (c in attrs && attrs[c] != null && attrs[c] !== "") return c;
+      }
+      return null;
+    }
+
+    // paprastas poligono centroidas (pirmo žiedo taškų vidurkis)
+    function polygonToCentroid(geom) {
+      if (!geom || !Array.isArray(geom.rings) || geom.rings.length === 0) {
+        return null;
+      }
+      const ring = geom.rings[0];
+      if (!ring || ring.length === 0) return null;
+
+      let sumX = 0;
+      let sumY = 0;
+      let count = 0;
+
+      ring.forEach((pt) => {
+        if (Array.isArray(pt) && pt.length >= 2) {
+          sumX += pt[0];
+          sumY += pt[1];
+          count++;
+        }
+      });
+
+      if (!count) return null;
+
+      return {
+        x: sumX / count,
+        y: sumY / count
+      };
+    }
+
+    function createQueryUrl() {
+      const params = new URLSearchParams({
+        where: whereClause,
+        outFields: "*",
+        returnGeometry: "true",
+        outSR: "4326", // perprojektuoja iš LKS į WGS84
+        f: "pjson"
+      });
+      return arcgisLayerUrl + "/query?" + params.toString();
+    }
+
+    function renderList(items) {
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      items.forEach((item) => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
+    }
+
+    function applyFilter() {
+      const q = (filterInput.value || "").trim().toLowerCase();
+      if (!q) {
+        renderList(allItems);
+        return;
+      }
+      const filtered = allItems.filter((item) =>
+        (item.searchText || "").toLowerCase().includes(q)
+      );
+      renderList(filtered);
+    }
+
+    // ===== DUOMENŲ UŽKLAUSA IŠ ARCGIS =====
+    async function loadData() {
+      try {
+        const url = createQueryUrl();
+        console.log("Query URL:", url);
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
+          statusBar.textContent = "Nerasta objektų (statusas 1,4,6)";
+          return;
+        }
+
+        const markers = [];
+
+        data.features.forEach((f) => {
+          const attrs = f.attributes || {};
+          const statusCode = attrs.statusas;
+
+          // papildomas saugumas – jei vis dėlto atėjo ir kiti statusai
+          if (![1,4,6].includes(statusCode)) return;
+
+          const geom = f.geometry;
+          const centroid = polygonToCentroid(geom);
+          if (!centroid) return;
+
+          const lon = centroid.x;
+          const lat = centroid.y;
+
+          if (lat == null || lon == null) return;
+
+          const latLng = [lat, lon];
+
+          const marker = L.marker(latLng).addTo(map);
+
+          const titleField = pickField(attrs, titleFieldCandidates);
+          const addrField = pickField(attrs, addressFieldCandidates);
+
+          const title =
+            (titleField && attrs[titleField]) ||
+            "Užduotis #" + (attrs.OBJECTID || "");
+          const address = addrField ? attrs[addrField] : "";
+
+          const statusText = statusLookup[statusCode] || ("Statusas: " + statusCode);
+          const companyText = companyLookup[attrs.Imone] || ("Imonė kodu: " + attrs.Imone);
+
+          const popupHtml =
+            "<b>" + title + "</b><br/>" +
+            (address ? address + "<br/>" : "") +
+            "Statusas: " + statusText + "<br/>" +
+            "Įmonė: " + companyText + "<br/>" +
+            "Lat: " + lat.toFixed(6) + "<br/>Lon: " + lon.toFixed(6);
+
+          marker.bindPopup(popupHtml);
+
+          if (!listEl) return;
+
+          const row = document.createElement("div");
+          row.className = "feature-row";
+
+          const titleEl = document.createElement("div");
+          titleEl.className = "row-title";
+          titleEl.textContent = title;
+
+          const subEl = document.createElement("div");
+          subEl.className = "row-sub";
+          subEl.textContent = companyText + " | " + statusText;
+
+          const extraEl = document.createElement("div");
+          extraEl.className = "row-extra";
+          extraEl.textContent = address || "";
+
+          row.appendChild(titleEl);
+          row.appendChild(subEl);
+          row.appendChild(extraEl);
+
+          row.addEventListener("click", () => {
+            map.setView(latLng, 18);
+            marker.openPopup();
+
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          marker.on("click", () => {
+            row.scrollIntoView({
+              behavior: "smooth",
+              block: "center"
+            });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
+
+          const searchText =
+            title +
+            " " +
+            address +
+            " " +
+            statusText +
+            " " +
+            companyText +
+            " " +
+            JSON.stringify(attrs);
+
+          allItems.push({
+            marker,
+            rowEl: row,
+            attrs,
+            lat,
+            lon,
+            searchText
+          });
+
+          markers.push(marker);
+        });
+
+        if (markers.length > 0) {
+          const group = L.featureGroup(markers);
+          map.fitBounds(group.getBounds().pad(0.1));
+        }
+
+        renderList(allItems);
+      } catch (e) {
+        console.error(e);
+        statusBar.textContent = "Klaida skaitant duomenis (žiūrėk Console)";
+      }
+    }
+
+    if (filterInput) {
+      filterInput.addEventListener("input", applyFilter);
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
