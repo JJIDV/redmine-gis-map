@@ -112,7 +112,7 @@
       text-align: center;
     }
 
-    /* slėpti šoninę juostą labai siauriems ekranams (telefonas) */
+    /* ant telefono slepiam sąrašą dešinėje */
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -133,12 +133,12 @@
   </div>
 
   <script>
-    // --- Nustatymai --------------------------------------------------------
+    // --- KONFIGAS ---------------------------------------------------------
 
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // Tik neuždarytos užduotys: 1, 4, 6
+    // Tik neuždarytos užduotys
     const whereClause = "Statusas IN ('1','4','6')";
 
     // Statuso kodas -> tekstas
@@ -148,7 +148,7 @@
       "6": "Sukurta"
     };
 
-    // Įmonės kodas -> pavadinimas (pagal tavo lentelę)
+    // Įmonės kodas -> pavadinimas
     const companyLookup = {
       "0": "Nenurodyta",
       "1": "VMSA",
@@ -177,97 +177,14 @@
     const statusBar = document.getElementById("status-bar");
     let allItems = [];
 
-    // --- Pagalbinės funkcijos ---------------------------------------------
-
-    // LKS (EPSG:3346) -> WGS84 (EPSG:4326)
-    function lksToWgs(x, y) {
-      // paprastas Helmerto transformacijos aproksimavimas – pakanka vizualizacijai
-      // šiek tiek "nušaudys" centimetrus, bet Vilniui tinka
-      const a = 6378137.0;
-      const e2 = 0.00669437999014;
-
-      const lon0 = 25 * Math.PI / 180; // centrinis dienovidinis 25E
-      const k0 = 0.9998;
-      const falseE = 500000;
-      const falseN = 0;
-
-      const E = x - falseE;
-      const N = y - falseN;
-
-      const M = N / k0;
-      const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
-
-      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-      const J1 = (3 * e1 / 2 - 27 * e1 ** 3 / 32);
-      const J2 = (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32);
-      const J3 = (151 * e1 ** 3 / 96);
-      const J4 = (1097 * e1 ** 4 / 512);
-
-      const fp = mu + J1 * Math.sin(2 * mu) + J2 * Math.sin(4 * mu) +
-                 J3 * Math.sin(6 * mu) + J4 * Math.sin(8 * mu);
-
-      const sinfp = Math.sin(fp);
-      const cosfp = Math.cos(fp);
-      const tanfp = Math.tan(fp);
-
-      const C1 = e2 / (1 - e2) * cosfp * cosfp;
-      const T1 = tanfp * tanfp;
-      const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinfp * sinfp, 1.5);
-      const N1 = a / Math.sqrt(1 - e2 * sinfp * sinfp);
-      const D = E / (N1 * k0);
-
-      // lat, lon radianais
-      const lat = fp - (N1 * tanfp / R1) *
-        (D * D / 2 -
-         (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * e2 / (1 - e2)) * Math.pow(D, 4) / 24 +
-         (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * e2 / (1 - e2) - 3 * C1 * C1) * Math.pow(D, 6) / 720);
-
-      const lon = lon0 +
-        (D -
-         (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 +
-         (5 - 2 * C1 + 28 * T1 + 3 * C1 * C1 + 8 * e2 / (1 - e2) + 24 * T1 * T1) * Math.pow(D, 5) / 120) / cosfp;
-
-      return [lat * 180 / Math.PI, lon * 180 / Math.PI];
-    }
-
-    // paprastas poligono centro skaičiavimas (pirmas išorinis žiedas)
-    function polygonCentroid(rings) {
-      if (!rings || !rings.length) return null;
-      const ring = rings[0]; // darom prielaidą, kad pirmas žiedas – išorinis
-
-      let area = 0;
-      let cx = 0;
-      let cy = 0;
-
-      for (let i = 0, len = ring.length; i < len - 1; i++) {
-        const [x1, y1] = ring[i];
-        const [x2, y2] = ring[i + 1];
-        const f = x1 * y2 - x2 * y1;
-        area += f;
-        cx += (x1 + x2) * f;
-        cy += (y1 + y2) * f;
-      }
-
-      if (area === 0) {
-        // atsarginis variantas – paprastas vidurkis
-        let sx = 0, sy = 0;
-        ring.forEach(([x, y]) => { sx += x; sy += y; });
-        const n = ring.length || 1;
-        return [sx / n, sy / n];
-      }
-
-      area *= 0.5;
-      cx /= (6 * area);
-      cy /= (6 * area);
-      return [cx, cy];
-    }
+    // --- PAGALBINĖS -------------------------------------------------------
 
     function createQueryUrl() {
       const params = new URLSearchParams({
         where: whereClause,
         outFields: "OBJECTID,Statusas,Imone",
         returnGeometry: "true",
-        outSR: "3346",
+        outSR: "4326",    // TEGU SERVERIS PATS PERPROJEKUOJA Į WGS84
         f: "pjson"
       });
       const url = arcgisLayerUrl + "/query?" + params.toString();
@@ -291,7 +208,7 @@
       renderList(filtered);
     }
 
-    // --- Duomenų įkėlimas --------------------------------------------------
+    // --- DUOMENŲ ĮKĖLIMAS -------------------------------------------------
 
     async function loadData() {
       try {
@@ -314,10 +231,14 @@
           const geom = f.geometry;
           if (!geom || !geom.rings) return;
 
-          const center = polygonCentroid(geom.rings);
-          if (!center) return;
-
-          const [lat, lon] = lksToWgs(center[0], center[1]);
+          // Paverčiam poligoną į Leaflet polygon ir pasiimame jo centro tašką
+          const latLngRings = geom.rings.map(ring =>
+            ring.map(([x, y]) => [y, x]) // [lat, lon]
+          );
+          const poly = L.polygon(latLngRings);
+          const center = poly.getBounds().getCenter();
+          const lat = center.lat;
+          const lon = center.lng;
 
           const imoneCode = String(a.Imone ?? "");
           const company = companyLookup[imoneCode] || ("Kodas " + imoneCode);
@@ -377,7 +298,7 @@
         renderList(allItems);
       } catch (e) {
         console.error("Klaida įkeliant duomenis", e);
-        statusBar.textContent = "Klaida įkeliant duomenis";
+        statusBar.textContent = "Klaida įkeliant duomenis (žiūrėk Console)";
       }
     }
 
