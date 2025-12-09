@@ -2,15 +2,14 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Vilniaus užduotys (poligonai)</title>
+  <title>Uzduotys PROJ – poligonai</title>
 
-  <!-- Leaflet -->
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
   />
+
   <style>
     html, body {
       height: 100%;
@@ -29,8 +28,8 @@
     }
 
     #sidebar {
-      width: 220px;
-      max-width: 220px;
+      flex: 0 0 180px;
+      max-width: 180px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
@@ -100,7 +99,8 @@
       text-align: center;
     }
 
-    @media (max-width: 700px) {
+    /* mobile – paslepiam sąrašą */
+    @media (max-width: 600px) {
       #sidebar {
         display: none;
       }
@@ -119,27 +119,16 @@
     </div>
   </div>
 
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
+  <!-- Leaflet JS -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ArcGIS sluoksnis su poligonais
+    // ArcGIS MapServer sluoksnis
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // Tik statusai 1 arba 6
-    const whereClause = "Statusas IN (1, 6)";
-
-    // Kodai -> tekstas
-    const statusMap = {
-      1: "Vykdoma",
-      6: "Sukurta"
-    };
-
-    const companyMap = {
+    // Imonės kodų -> pavadinimų žodynas
+    const IMONE_MAP = {
       0: "Nenurodyta",
       1: "VMSA",
       2: "SISP",
@@ -150,9 +139,106 @@
       7: "Gatas"
     };
 
-    // Leaflet žemėlapis
-    const map = L.map("map").setView([54.6872, 25.2797], 11);
+    // Statuso kodų -> pavadinimų žodynas
+    const STATUS_MAP = {
+      1: "Vykdoma",
+      6: "Sukurta"
+      // 4 specialiai NENAUDOJAM pagal tavo sąlygą
+    };
 
+    // LKS (EPSG:3346) -> WGS84 konvertavimas
+    // formulė apytikslė, bet Vilniui pakanka
+    function lksToWgs(x, y) {
+      // LKS (TM, GRS80, EPSG:3346) -> lat/lon (WGS84)
+      const a = 6378137.0;
+      const f = 1 / 298.257222101;
+      const k0 = 0.9998;
+      const e2 = 2 * f - f * f;
+
+      // centrinis meridianas Lietuvai ~ 24E
+      const lambda0 = 24 * Math.PI / 180;
+
+      const x0 = 500000;
+      const y0 = 0;
+
+      const E = x;
+      const N = y;
+
+      const M = (N - y0) / k0;
+      const mu =
+        M /
+        (a *
+          (1 -
+            e2 / 4 -
+            (3 * e2 * e2) / 64 -
+            (5 * e2 * e2 * e2) / 256));
+
+      const e1 =
+        (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+      const J1 = (3 * e1) / 2 - (27 * e1 * e1 * e1) / 32;
+      const J2 = (21 * e1 * e1) / 16 - (55 * e1 * e1 * e1 * e1) / 32;
+      const J3 = (151 * e1 * e1 * e1) / 96;
+      const J4 = (1097 * e1 * e1 * e1 * e1) / 512;
+
+      const fp =
+        mu +
+        J1 * Math.sin(2 * mu) +
+        J2 * Math.sin(4 * mu) +
+        J3 * Math.sin(6 * mu) +
+        J4 * Math.sin(8 * mu);
+
+      const e2prime = e2 / (1 - e2);
+
+      const sinfp = Math.sin(fp);
+      const cosfp = Math.cos(fp);
+      const tanfp = Math.tan(fp);
+
+      const C1 = e2prime * cosfp * cosfp;
+      const T1 = tanfp * tanfp;
+      const R1 =
+        (a * (1 - e2)) /
+        Math.pow(1 - e2 * sinfp * sinfp, 1.5);
+      const N1 = a / Math.sqrt(1 - e2 * sinfp * sinfp);
+      const D = (E - x0) / (N1 * k0);
+
+      let lat =
+        fp -
+        ((N1 * tanfp) / R1) *
+          (D * D / 2 -
+            (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * e2prime) *
+              Math.pow(D, 4) /
+              24 +
+            (61 +
+              90 * T1 +
+              298 * C1 +
+              45 * T1 * T1 -
+              252 * e2prime -
+              3 * C1 * C1) *
+              Math.pow(D, 6) /
+              720);
+
+      let lon =
+        lambda0 +
+        (D -
+          (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 +
+          (5 -
+            2 * C1 +
+            28 * T1 -
+            3 * C1 * C1 +
+            8 * e2prime +
+            24 * T1 * T1) *
+            Math.pow(D, 5) /
+            120) /
+          cosfp;
+
+      lat = (lat * 180) / Math.PI;
+      lon = (lon * 180) / Math.PI;
+      return { lat, lon };
+    }
+
+    // Paprastas Leaflet žemėlapis
+    const map = L.map("map").setView([54.69, 25.28], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
@@ -162,57 +248,13 @@
     const filterInput = document.getElementById("filter");
     const statusBar = document.getElementById("status-bar");
 
-    let allItems = [];
-    let polygonsLayer = L.geoJSON(null, {
-      style: feature => styleByStatus(feature.properties.statusCode)
-    }).addTo(map);
+    let allItems = []; // { polygon, rowEl, searchText }
 
-    // --- Stiliai pagal statusą ---
-    function styleByStatus(statusCode) {
-      if (statusCode === 1) {
-        // Vykdoma – mėlyna
-        return {
-          color: "#0052cc",
-          weight: 1,
-          fillColor: "#4c9aff",
-          fillOpacity: 0.4
-        };
-      } else if (statusCode === 6) {
-        // Sukurta – geltona
-        return {
-          color: "#e3a900",
-          weight: 1,
-          fillColor: "#ffe58f",
-          fillOpacity: 0.4
-        };
-      }
-      // default
-      return {
-        color: "#666",
-        weight: 1,
-        fillColor: "#cccccc",
-        fillOpacity: 0.3
-      };
-    }
-
-    // ESRI Polygon -> GeoJSON Polygon
-    function esriPolygonToGeoJSON(geom) {
-      if (!geom || !geom.rings) return null;
-      return {
-        type: "Polygon",
-        coordinates: geom.rings.map(ring =>
-          ring.map(([x, y]) => [x, y]) // jau WGS84 iš outSR=4326
-        )
-      };
-    }
-
-    // Paprastas query be BBOX – pasiimam visus Statusas IN (1, 6)
     function createQueryUrl() {
       const params = new URLSearchParams({
-        where: whereClause,
-        outFields: "OBJECTID,Statusas,Imone",
+        where: "1=1",          // jokių Statusas sąlygų – filtruosim kliente
+        outFields: "*",
         returnGeometry: "true",
-        outSR: "4326",
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -220,135 +262,135 @@
 
     function renderList(items) {
       listEl.innerHTML = "";
-      items.forEach(item => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomos " + items.length + " užduotys";
+      items.forEach((item) => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodoma " + items.length + " užduočių";
     }
 
     function applyFilter() {
-      const q = (filterInput.value || "").trim().toLowerCase();
-      if (!q) {
-        renderList(allItems);
-        return;
-      }
-      const filtered = allItems.filter(item =>
+      const q = filterInput.value.trim().toLowerCase();
+      if (!q) return renderList(allItems);
+      const filtered = allItems.filter((item) =>
         (item.searchText || "").toLowerCase().includes(q)
       );
       renderList(filtered);
     }
 
     async function loadData() {
-      statusBar.textContent = "Kraunama...";
-      const url = createQueryUrl();
-
       try {
-        const resp = await fetch(url);
-        const data = await resp.json();
+        const resp = await fetch(createQueryUrl());
+        const text = await resp.text();
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error("Nepavyko išparsinti JSON:", text);
+          statusBar.textContent = "Klaida: blogas atsakas iš serviso";
+          return;
+        }
 
         if (data.error) {
           console.error("ArcGIS error:", data.error);
-          statusBar.textContent = "Klaida iš serverio";
+          statusBar.textContent = "ArcGIS klaida: " + (data.error.message || "");
           return;
         }
 
-        const features = data.features || [];
-        polygonsLayer.clearLayers();
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Nerasta objektų";
+          return;
+        }
+
+        const polygons = [];
         allItems = [];
 
-        if (!features.length) {
-          statusBar.textContent = "Užduočių nėra";
-          renderList(allItems);
-          return;
-        }
+        data.features.forEach((f) => {
+          const attrs = f.attributes || {};
+          const statusCode = attrs.Statusas ?? attrs.statusas;
 
-        const geojsonFeatures = [];
-
-        features.forEach(f => {
-          const a = f.attributes || {};
-          const g = f.geometry;
-
-          const statusCode = a.Statusas;
+          // Tik statusai 1 arba 6
           if (statusCode !== 1 && statusCode !== 6) return;
 
-          const statusText = statusMap[statusCode] || ("Statusas " + statusCode);
-          const companyText = companyMap[a.Imone] || ("Įmonė " + a.Imone);
-          const gjGeom = esriPolygonToGeoJSON(g);
-          if (!gjGeom) return;
+          const statusText =
+            STATUS_MAP[statusCode] || ("Statusas " + statusCode);
 
-          const gjFeature = {
-            type: "Feature",
-            geometry: gjGeom,
-            properties: {
-              objectId: a.OBJECTID,
-              statusCode,
-              statusText,
-              companyText
-            }
-          };
-          geojsonFeatures.push(gjFeature);
-        });
+          const imoneCode = attrs.Imone ?? attrs.imone;
+          const imoneText =
+            IMONE_MAP[imoneCode] || ("Įmonė kodas " + imoneCode);
 
-        // Pridėti į Leaflet
-        polygonsLayer = L.geoJSON(geojsonFeatures, {
-          style: feature => styleByStatus(feature.properties.statusCode),
-          onEachFeature: (feature, layer) => {
-            const p = feature.properties;
-            const popupHtml =
-              `<b>Užduotis #${p.objectId}</b><br>` +
-              `Įmonė: ${p.companyText}<br>` +
-              `Statusas: ${p.statusText}`;
-            layer.bindPopup(popupHtml);
+          const objectId =
+            attrs.OBJECTID ?? attrs.ObjectID ?? attrs.objectid;
 
-            layer.on("click", () => {
-              if (p._rowEl) {
-                document
-                  .querySelectorAll(".feature-row.active")
-                  .forEach(el => el.classList.remove("active"));
-                p._rowEl.classList.add("active");
-                p._rowEl.scrollIntoView({
-                  behavior: "smooth",
-                  block: "center"
-                });
-              }
-            });
-          }
-        }).addTo(map);
+          const g = f.geometry;
+          if (!g || !g.rings || !g.rings.length) return;
 
-        // Sąrašas dešinėje
-        polygonsLayer.eachLayer(layer => {
-          const p = layer.feature.properties;
+          // Konvertuojam visą poligoną iš LKS į WGS
+          const latlngRings = g.rings.map((ring) =>
+            ring.map((coord) => {
+              const { lat, lon } = lksToWgs(coord[0], coord[1]);
+              return [lat, lon]; // Leaflet [lat, lng]
+            })
+          );
+
+          const polygon = L.polygon(latlngRings, {
+            color: "#ff7800",
+            weight: 2,
+            fillColor: "#ffcc66",
+            fillOpacity: 0.5
+          });
+
+          // Pop-up tekstas
+          const center = polygon.getBounds().getCenter();
+          const popupHtml =
+            `<b>Užduotis #${objectId}</b><br>` +
+            `Įmonė: ${imoneText}<br>` +
+            `Statusas: ${statusText}<br>` +
+            `Lat: ${center.lat.toFixed(5)} | Lon: ${center.lng.toFixed(5)}`;
+
+          polygon.bindPopup(popupHtml);
+
+          polygon.addTo(map);
+          polygons.push(polygon);
+
+          // Sąrašo eilutė
           const row = document.createElement("div");
           row.className = "feature-row";
           row.innerHTML =
-            `<div class="row-title">Užduotis #${p.objectId}</div>` +
-            `<div class="row-sub">Įmonė: ${p.companyText}</div>` +
-            `<div class="row-sub">Statusas: ${p.statusText}</div>`;
+            `<div class="row-title">#${objectId} – ${imoneText}</div>` +
+            `<div class="row-sub">Statusas: ${statusText}</div>`;
 
           row.onclick = () => {
-            const bounds = layer.getBounds();
-            map.fitBounds(bounds.pad(0.2));
-            layer.openPopup();
-
+            const bounds = polygon.getBounds();
+            map.fitBounds(bounds.pad(0.1));
+            polygon.openPopup();
             document
               .querySelectorAll(".feature-row.active")
-              .forEach(el => el.classList.remove("active"));
+              .forEach((el) => el.classList.remove("active"));
             row.classList.add("active");
           };
 
-          p._rowEl = row;
+          polygon.on("click", () => {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            document
+              .querySelectorAll(".feature-row.active")
+              .forEach((el) => el.classList.remove("active"));
+            row.classList.add("active");
+          });
 
           allItems.push({
+            polygon,
             rowEl: row,
-            searchText:
-              `#${p.objectId} ${p.companyText} ${p.statusText}`,
-            layer
+            searchText: `${objectId} ${imoneText} ${statusText}`
           });
         });
 
-        // Zoominam į visų poligonų aprėptį
-        const allBounds = polygonsLayer.getBounds();
-        if (allBounds.isValid()) {
-          map.fitBounds(allBounds.pad(0.1));
+        if (!polygons.length) {
+          statusBar.textContent =
+            "Pagal filtrą (Statusas 1 arba 6) objektų nėra";
+          return;
         }
+
+        const group = L.featureGroup(polygons);
+        map.fitBounds(group.getBounds().pad(0.1));
 
         renderList(allItems);
       } catch (e) {
@@ -357,11 +399,8 @@
       }
     }
 
-    map.whenReady(loadData);
-
-    if (filterInput) {
-      filterInput.addEventListener("input", applyFilter);
-    }
+    if (filterInput) filterInput.addEventListener("input", applyFilter);
+    loadData();
   </script>
 </body>
 </html>
