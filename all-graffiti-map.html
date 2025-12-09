@@ -2,13 +2,16 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – vykdomi darbai (statusas = 3)</title>
+  <title>Graffiti – vykdomi darbai (statusas = „Vykdoma“)</title>
 
   <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
   />
+
+  <!-- Proj4 – koordinatėms iš LKS94 -> WGS84 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
 
   <style>
     html, body {
@@ -29,8 +32,8 @@
     }
 
     #sidebar {
-      flex: 0 0 140px;
-      max-width: 140px;
+      flex: 0 0 150px;
+      max-width: 150px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
@@ -122,7 +125,7 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Taškai (statusas = 3)</div>
+      <div id="sidebar-header">Taškai („Vykdoma“)</div>
       <input id="filter" type="text" placeholder="Filtruoti..." />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
@@ -133,32 +136,42 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ArcGIS FeatureService (naujas variantas)
+    // === KONFIGŪRACIJA ===
+
+    // Tavo FeatureService
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/server/rest/services/TESTAVIMAI/redmine_map/FeatureServer/0";
 
-    // Serveriui siunčiam paprasčiausią sąlygą – atsinešam viską,
-    // o statusas = 3 filtruosim jau JS'e
-    const whereClause = "1=1";
+    // Kurio statuso rodyti: ieškom žodžio „Vykdoma“ tekste
+    // Jei nori rodyti VISUS, tiesiog padaryk const ACTIVE_STATUS_KEYWORD = "";
+    const ACTIVE_STATUS_KEYWORD = "Vykdoma";
 
-    const map = L.map("map").setView([54.6905, 25.2799], 12);
+    // Proj4 – apibrėžiam projekcijas (LKS94 -> WGS84)
+    proj4.defs("EPSG:3346",
+      "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 " +
+      "+ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+    );
+    proj4.defs("EPSG:4326",
+      "+proj=longlat +datum=WGS84 +no_defs"
+    );
+
+    const map = L.map("map").setView([54.69, 25.28], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    const listEl     = document.getElementById("list");
+    const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
-    const statusBar  = document.getElementById("status-bar");
+    const statusBar = document.getElementById("status-bar");
 
-    let allItems = [];   // {marker, rowEl, searchText}
+    let allItems = []; // { marker, rowEl, searchText }
 
     function createQueryUrl() {
       const params = new URLSearchParams({
-        where: whereClause,
-        outFields: "*",           // pasiimam visus laukus
-        returnGeometry: "true",
-        outSR: "4326",           // konvertuoja į WGS84 (lat/lon)
+        where: "1=1",        // imam viską, filtruosim kliente
+        outFields: "*",
+        returnGeometry: "false", // geometrijos nenaudosim, turim X_koord/Y_koord
         f: "pjson"
       });
       return arcgisLayerUrl + "/query?" + params.toString();
@@ -168,7 +181,9 @@
       if (!listEl) return;
       listEl.innerHTML = "";
       items.forEach((item) => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomi " + items.length + " objektai (statusas = 3)";
+      statusBar.textContent =
+        "Rodomi " + items.length + " objektai" +
+        (ACTIVE_STATUS_KEYWORD ? " (statusas ~ \"" + ACTIVE_STATUS_KEYWORD + "\")" : "");
     }
 
     function applyFilter() {
@@ -197,34 +212,44 @@
 
         data.features.forEach((f) => {
           const a = f.attributes || {};
-          const g = f.geometry;
 
-          // rodome tik statusas = 3
-          if (a.statusas !== 3) return;
-          if (!g || g.x == null || g.y == null) return;
+          const statusName = a.statusas_name || "";
+          if (
+            ACTIVE_STATUS_KEYWORD &&
+            (!statusName || !statusName.includes(ACTIVE_STATUS_KEYWORD))
+          ) {
+            return; // šito nerodom
+          }
 
-          const lat = g.y;
-          const lon = g.x;
+          const x = a.X_koord;
+          const y = a.Y_koord;
+          if (!isFinite(x) || !isFinite(y)) return;
+
+          // LKS94 -> WGS84
+          const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
           const latLng = [lat, lon];
 
-          // pavadinimas – tiesiog „Graffiti #OBJECTID“
           const oid = a.OBJECTID;
           const title = oid != null ? ("Graffiti #" + oid) : "Graffiti objektas";
 
           const address = a.adresas || "";
-          const tvarkTipas = a.tvark_tipas != null ? a.tvark_tipas : "";
+          const rangovas = a.rangovas || "";
+          const tvarkTipas = a.tvark_tipas_name || "";
 
           const marker = L.marker(latLng).addTo(map);
 
           const popupHtml =
             "<b>" + title + "</b><br>" +
-            (address ? (address + "<br>") : "") +
-            "statusas = " + a.statusas +
-            (tvarkTipas !== "" ? ("<br>tvark_tipas = " + tvarkTipas) : "");
+            (address ? address + "<br>" : "") +
+            (statusName ? "Statusas: " + statusName + "<br>" : "") +
+            (tvarkTipas ? "Tvarkymo tipas: " + tvarkTipas + "<br>" : "") +
+            (rangovas ? "Rangovas: " + rangovas + "<br>" : "") +
+            "X (LKS): " + x.toFixed(2) + "<br>" +
+            "Y (LKS): " + y.toFixed(2);
 
           marker.bindPopup(popupHtml);
 
-          // eilutė dešinėje
+          // Eilutė sąraše
           const row = document.createElement("div");
           row.className = "feature-row";
 
@@ -234,18 +259,21 @@
 
           const subEl = document.createElement("div");
           subEl.className = "row-sub";
-          subEl.textContent = address || "(be adreso)";
+          const subParts = [];
+          if (address) subParts.push(address);
+          if (statusName) subParts.push(statusName);
+          if (rangovas) subParts.push(rangovas);
+          subEl.textContent = subParts.join(" • ") || "(be papildomos info)";
 
           const coordsEl = document.createElement("div");
           coordsEl.className = "row-coords";
           coordsEl.textContent =
-            lat.toFixed(5) + ", " + lon.toFixed(5);
+            "Lat: " + lat.toFixed(5) + " | Lon: " + lon.toFixed(5);
 
           row.appendChild(titleEl);
           row.appendChild(subEl);
           row.appendChild(coordsEl);
 
-          // sąsaja – paspaudi eilutę → zoom į markerį
           row.addEventListener("click", () => {
             map.setView(latLng, 18);
             marker.openPopup();
@@ -255,7 +283,6 @@
             row.classList.add("active");
           });
 
-          // paspaudi markerį → išskrolina eilutę
           marker.on("click", () => {
             row.scrollIntoView({ behavior: "smooth", block: "center" });
             document
@@ -264,8 +291,14 @@
             row.classList.add("active");
           });
 
-          const searchText =
-            title + " " + address + " " + JSON.stringify(a);
+          const searchText = [
+            title,
+            address,
+            statusName,
+            rangovas,
+            tvarkTipas,
+            JSON.stringify(a)
+          ].join(" ");
 
           allItems.push({
             marker,
@@ -278,11 +311,11 @@
 
         if (!markers.length) {
           statusBar.textContent =
-            "Nerasta objektų su statusas = 3";
+            "Nerasta objektų atitinkančių statusą \"" +
+            ACTIVE_STATUS_KEYWORD + "\"";
           return;
         }
 
-        // pritraukiam prie visų taškų
         const group = L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.1));
 
