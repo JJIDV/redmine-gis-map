@@ -10,6 +10,9 @@
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
   />
 
+  <!-- proj4 – koordinačių transformacijoms -->
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.1/dist/proj4.js"></script>
+
   <style>
     html, body {
       height: 100%;
@@ -109,7 +112,7 @@
       text-align: center;
     }
 
-    /* Mobiliai – paslepiam šoninę juostą */
+    /* Mobiliai – slepiam šoninę juostą */
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -133,11 +136,11 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ArcGIS MapServer sluoksnis su poligonais
+    // ArcGIS MapServer sluoksnis
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // Filtruojam tik neuždarytas: Statusas IN (1,6)
+    // Filtras – tik neuždarytos
     const whereClause = "Statusas IN (1, 6)";
 
     // Statuso kodų vertimas į tekstą
@@ -147,7 +150,7 @@
       6: "Sukurta"
     };
 
-    // Įmonių kodų vertimas į pavadinimus
+    // Įmonių kodų vertimas į tekstus
     const companyLookup = {
       0: "Nenurodyta",
       1: "VMSA",
@@ -159,10 +162,21 @@
       7: "Gatas"
     };
 
+    // Apibrėžiam LKS-94 (EPSG:3346)
+    proj4.defs(
+      "EPSG:3346",
+      "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs"
+    );
+
+    function lksToWgs(x, y) {
+      // proj4 grąžina [lon, lat]
+      const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
+      return [lat, lon]; // Leaflet tvarka
+    }
+
     // Inicializuojam žemėlapį
     const map = L.map("map").setView([54.6872, 25.2797], 11);
 
-    // OSM pagrindo plytelės
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "© OpenStreetMap"
@@ -178,7 +192,6 @@
         where: whereClause,
         outFields: "OBJECTID,Statusas,Imone",
         returnGeometry: "true",
-        outSR: "4326",   // prašom WGS84
         f: "json"
       });
       const url = arcgisLayerUrl + "/query?" + params.toString();
@@ -186,20 +199,29 @@
       return url;
     }
 
-    // Centroidas iš polygon/rings (WGS koord.)
     function getPolygonCentroid(geometry) {
       if (!geometry || !geometry.rings || !geometry.rings.length) return null;
-      const ring = geometry.rings[0]; // imame pirmą žiedą
-      let xSum = 0;
-      let ySum = 0;
-      let count = 0;
+      const ring = geometry.rings[0];
+      let xSum = 0, ySum = 0, count = 0;
+
       for (const pt of ring) {
-        xSum += pt[0];
-        ySum += pt[1];
+        const x = pt[0];
+        const y = pt[1];
+        xSum += x;
+        ySum += y;
         count++;
       }
       if (!count) return null;
-      return [ySum / count, xSum / count]; // Leaflet: [lat, lon]
+      const xMean = xSum / count;
+      const yMean = ySum / count;
+      return lksToWgs(xMean, yMean); // jau [lat, lon]
+    }
+
+    function polygonToLatLngs(geometry) {
+      if (!geometry || !geometry.rings) return [];
+      return geometry.rings.map(ring =>
+        ring.map(([x, y]) => lksToWgs(x, y))
+      );
     }
 
     function renderList(items) {
@@ -251,16 +273,12 @@
           const companyText = companyLookup[attrs.Imone] || ("Imonės kodas: " + attrs.Imone);
           const objectId = attrs.OBJECTID;
 
-          // Centroidas
           const centroid = getPolygonCentroid(geom);
           if (!centroid) return;
 
-          // Poligono geometrija
-          const polygonLatLngs = (geom.rings || []).map(ring =>
-            ring.map(([x, y]) => [y, x])
-          );
+          const polygonLatLngs = polygonToLatLngs(geom);
+          if (!polygonLatLngs.length) return;
 
-          // Stilizuotas poligonas
           const polygon = L.polygon(polygonLatLngs, {
             color: "#ff6600",
             weight: 2,
@@ -268,7 +286,6 @@
             fillOpacity: 0.4
           }).addTo(featureLayer);
 
-          // Pop-up tekstas
           const popupHtml = `
             <b>Užduotis #${objectId}</b><br/>
             Įmonė: ${companyText}<br/>
@@ -277,7 +294,6 @@
           `;
           polygon.bindPopup(popupHtml);
 
-          // Šoninė eilutė
           if (listEl) {
             const row = document.createElement("div");
             row.className = "feature-row";
@@ -290,13 +306,17 @@
             row.onclick = () => {
               map.setView(centroid, 15);
               polygon.openPopup();
-              document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
+              document
+                .querySelectorAll(".feature-row.active")
+                .forEach(el => el.classList.remove("active"));
               row.classList.add("active");
             };
 
             polygon.on("click", () => {
               row.scrollIntoView({ behavior: "smooth", block: "center" });
-              document.querySelectorAll(".feature-row.active").forEach(el => el.classList.remove("active"));
+              document
+                .querySelectorAll(".feature-row.active")
+                .forEach(el => el.classList.remove("active"));
               row.classList.add("active");
             });
 
