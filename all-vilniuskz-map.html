@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Užduotys (st. 1, 4, 6)</title>
+  <title>Užduotys (st. 1 ir 6)</title>
 
   <!-- Leaflet -->
   <link
@@ -10,17 +10,6 @@
     href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
   />
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- MarkerCluster -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-  />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-  />
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
     html, body {
@@ -125,7 +114,7 @@
     <div id="map"></div>
 
     <div id="sidebar">
-      <div id="sidebar-header">Užduotys (st. 1, 4, 6)</div>
+      <div id="sidebar-header">Užduotys (st. 1 ir 6)</div>
       <input id="filter" type="text" placeholder="Filtruoti pagal įmonę / statusą..." />
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
@@ -138,13 +127,12 @@
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/Uzduotys_PROJ_QL/MapServer/0";
 
-    // Tik neuždarytos užduotys
-    const whereClause = "Statusas IN ('1','4','6')";
+    // Tik statusai 1 ir 6
+    const whereClause = "Statusas IN ('1','6')";
 
     // Statuso kodas -> tekstas
     const statusLookup = {
       "1": "Vykdoma",
-      "4": "Atlikta",
       "6": "Sukurta"
     };
 
@@ -167,9 +155,8 @@
       attribution: "© OpenStreetMap"
     }).addTo(map);
 
-    // Klasterių grupė
-    const clusterGroup = L.markerClusterGroup();
-    map.addLayer(clusterGroup);
+    // LayerGroup vietoj klasterių
+    const markerLayer = L.layerGroup().addTo(map);
 
     // Šoninė juosta
     const listEl = document.getElementById("list");
@@ -184,12 +171,10 @@
         where: whereClause,
         outFields: "OBJECTID,Statusas,Imone",
         returnGeometry: "true",
-        outSR: "4326",    // TEGU SERVERIS PATS PERPROJEKUOJA Į WGS84
+        outSR: "4326",    // tegul serveris pats perprojektuoja į WGS84
         f: "pjson"
       });
-      const url = arcgisLayerUrl + "/query?" + params.toString();
-      console.log("Query URL:", url);
-      return url;
+      return arcgisLayerUrl + "/query?" + params.toString();
     }
 
     function renderList(items) {
@@ -216,7 +201,6 @@
         const data = await resp.json();
 
         if (!data.features || !data.features.length) {
-          console.warn("No features in response", data);
           statusBar.textContent = "Nerasta objektų";
           return;
         }
@@ -226,12 +210,12 @@
         data.features.forEach((f) => {
           const a = f.attributes || {};
           const statusCode = String(a.Statusas ?? "");
-          if (!["1", "4", "6"].includes(statusCode)) return;
+          if (!["1", "6"].includes(statusCode)) return;
 
           const geom = f.geometry;
           if (!geom || !geom.rings) return;
 
-          // Paverčiam poligoną į Leaflet polygon ir pasiimame jo centro tašką
+          // poligonas -> centroidas
           const latLngRings = geom.rings.map(ring =>
             ring.map(([x, y]) => [y, x]) // [lat, lon]
           );
@@ -245,7 +229,8 @@
           const statusText = statusLookup[statusCode] || ("Kodas " + statusCode);
           const id = a.OBJECTID;
 
-          const marker = L.marker([lat, lon]);
+          const marker = L.marker([lat, lon]).addTo(markerLayer);
+
           const popupHtml =
             `<b>Užduotis #${id}</b><br>` +
             `Įmonė: ${company}<br>` +
@@ -253,7 +238,6 @@
             `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
 
           marker.bindPopup(popupHtml);
-          clusterGroup.addLayer(marker);
           markers.push(marker);
 
           if (!listEl) return;
@@ -289,7 +273,7 @@
         });
 
         if (markers.length) {
-          const bounds = clusterGroup.getBounds();
+          const bounds = L.latLngBounds(markers.map(m => m.getLatLng()));
           if (bounds.isValid()) {
             map.fitBounds(bounds.pad(0.1));
           }
