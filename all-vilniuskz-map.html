@@ -206,28 +206,15 @@
       };
     }
 
-    function createQueryUrlForCurrentExtent() {
-      const b = map.getBounds();
-      // ArcGIS envelope: xmin,ymin,xmax,ymax (lon/lat)
-      const geometry = [
-        b.getWest(),
-        b.getSouth(),
-        b.getEast(),
-        b.getNorth()
-      ].join(",");
-
+    // Paprastas query be BBOX – pasiimam visus Statusas IN (1, 6)
+    function createQueryUrl() {
       const params = new URLSearchParams({
         where: whereClause,
         outFields: "OBJECTID,Statusas,Imone",
         returnGeometry: "true",
-        geometry: geometry,
-        geometryType: "esriGeometryEnvelope",
-        spatialRel: "esriSpatialRelIntersects",
-        inSR: "4326",
         outSR: "4326",
         f: "pjson"
       });
-
       return arcgisLayerUrl + "/query?" + params.toString();
     }
 
@@ -249,9 +236,9 @@
       renderList(filtered);
     }
 
-    async function loadDataForView() {
+    async function loadData() {
       statusBar.textContent = "Kraunama...";
-      const url = createQueryUrlForCurrentExtent();
+      const url = createQueryUrl();
 
       try {
         const resp = await fetch(url);
@@ -268,7 +255,7 @@
         allItems = [];
 
         if (!features.length) {
-          statusBar.textContent = "Šioje srityje užduočių nėra";
+          statusBar.textContent = "Užduočių nėra";
           renderList(allItems);
           return;
         }
@@ -312,7 +299,6 @@
             layer.bindPopup(popupHtml);
 
             layer.on("click", () => {
-              // paryškinti eilutę sąraše
               if (p._rowEl) {
                 document
                   .querySelectorAll(".feature-row.active")
@@ -327,7 +313,7 @@
           }
         }).addTo(map);
 
-        // Sąrašo elementai
+        // Sąrašas dešinėje
         polygonsLayer.eachLayer(layer => {
           const p = layer.feature.properties;
           const row = document.createElement("div");
@@ -348,16 +334,21 @@
             row.classList.add("active");
           };
 
-          // kad iš žemėlapio clicarint layer'į galėtume paryškinti eilutę
           p._rowEl = row;
 
           allItems.push({
             rowEl: row,
             searchText:
               `#${p.objectId} ${p.companyText} ${p.statusText}`,
-            layer: layer
+            layer
           });
         });
+
+        // Zoominam į visų poligonų aprėptį
+        const allBounds = polygonsLayer.getBounds();
+        if (allBounds.isValid()) {
+          map.fitBounds(allBounds.pad(0.1));
+        }
 
         renderList(allItems);
       } catch (e) {
@@ -366,9 +357,7 @@
       }
     }
 
-    // Pirmas užkrovimas ir atnaujinimas kai pajudinamas žemėlapis
-    map.whenReady(loadDataForView);
-    map.on("moveend", loadDataForView);
+    map.whenReady(loadData);
 
     if (filterInput) {
       filterInput.addEventListener("input", applyFilter);
