@@ -114,6 +114,8 @@
       color: #555;
       background: #fafafa;
       text-align: center;
+      line-height: 1.4;
+      word-break: break-word;
     }
 
     @media (max-width: 600px) {
@@ -138,18 +140,9 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // PASIKEISK ŠĮ URL
+    // ČIA įrašyk savo tikrą sluoksnio URL
     const arcgisLayerUrl =
       "https://zemelapiai.vplanas.lt/arcgis/rest/services/TESTAVIMAI/Uzduotys_PROJ/MapServer/3";
-
-    // Jei nori filtruoti tik produkcinę aplinką:
-    // const whereClause = "Aplinka = 2";
-    //
-    // Jei tik testinę:
-    // const whereClause = "Aplinka = 1";
-    //
-    // Jei viską:
-    const whereClause = "1=1";
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -188,34 +181,6 @@
       return [lat, lon];
     }
 
-    const map = L.map("map").setView([54.6872, 25.2797], 11);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap"
-    }).addTo(map);
-
-    const listEl = document.getElementById("list");
-    const filterInput = document.getElementById("filter");
-    const statusBar = document.getElementById("status-bar");
-
-    let allItems = [];
-    let featureLayer = L.featureGroup().addTo(map);
-
-    function createQueryUrl() {
-      const params = new URLSearchParams({
-        where: whereClause,
-        outFields: "OBJECTID,Imone,Aplinka",
-        returnGeometry: "true",
-        f: "json",
-        outSR: "3346"
-      });
-
-      const url = arcgisLayerUrl + "/query?" + params.toString();
-      console.log("Query URL:", url);
-      return url;
-    }
-
     function getCompanyText(code) {
       return companyLookup[code] || ("Įmonės kodas: " + code);
     }
@@ -241,11 +206,13 @@
         return [];
       }
 
-      return geometry.rings.map(ring =>
-        ring
-          .filter(pt => Array.isArray(pt) && pt.length >= 2)
-          .map(([x, y]) => lksToWgs(x, y))
-      ).filter(ring => ring.length);
+      return geometry.rings
+        .map(ring =>
+          ring
+            .filter(pt => Array.isArray(pt) && pt.length >= 2)
+            .map(([x, y]) => lksToWgs(x, y))
+        )
+        .filter(ring => ring.length);
     }
 
     function polylineToLatLngs(geometry) {
@@ -253,11 +220,13 @@
         return [];
       }
 
-      return geometry.paths.map(path =>
-        path
-          .filter(pt => Array.isArray(pt) && pt.length >= 2)
-          .map(([x, y]) => lksToWgs(x, y))
-      ).filter(path => path.length);
+      return geometry.paths
+        .map(path =>
+          path
+            .filter(pt => Array.isArray(pt) && pt.length >= 2)
+            .map(([x, y]) => lksToWgs(x, y))
+        )
+        .filter(path => path.length);
     }
 
     function pointToLatLng(geometry) {
@@ -275,7 +244,6 @@
         if (Array.isArray(geometry.rings) && geometry.rings.length) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
-
           const polygon = L.polygon(latLngs);
           const bounds = polygon.getBounds();
           return bounds.isValid() ? bounds.getCenter() : null;
@@ -284,7 +252,6 @@
         if (Array.isArray(geometry.paths) && geometry.paths.length) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
-
           const polyline = L.polyline(latLngs);
           const bounds = polyline.getBounds();
           return bounds.isValid() ? bounds.getCenter() : null;
@@ -349,6 +316,33 @@
       return null;
     }
 
+    const map = L.map("map").setView([54.6872, 25.2797], 11);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar = document.getElementById("status-bar");
+
+    let allItems = [];
+    let featureLayer = L.featureGroup().addTo(map);
+
+    function createQueryUrl() {
+      const params = new URLSearchParams({
+        where: "1=1",
+        outFields: "*",
+        returnGeometry: "true",
+        f: "json"
+      });
+
+      const url = arcgisLayerUrl + "/query?" + params.toString();
+      console.log("Query URL:", url);
+      return url;
+    }
+
     function clearActiveRows() {
       document
         .querySelectorAll(".feature-row.active")
@@ -388,20 +382,24 @@
         listEl.innerHTML = "";
 
         const url = createQueryUrl();
-        const resp = await fetch(url, { cache: "no-store" });
+
+        const resp = await fetch(url, {
+          cache: "no-store",
+          mode: "cors"
+        });
+
         const data = await resp.json();
-
-        console.log("Pilnas atsakymas:", data);
+        console.log("Pilnas query atsakymas:", data);
         console.log("Features kiekis:", data.features?.length);
-
-        if (data.features?.length) {
-          console.log("Pirmas feature:", data.features[0]);
-          console.log("Pirmo feature geometrija:", data.features[0].geometry);
-        }
 
         if (data.error) {
           console.error("ArcGIS error:", data.error);
-          statusBar.textContent = "Klaida iš serverio";
+          statusBar.textContent =
+            "Serverio klaida: " +
+            (data.error.message || "nežinoma") +
+            (data.error.details && data.error.details.length
+              ? " | " + data.error.details.join(" | ")
+              : "");
           return;
         }
 
@@ -409,6 +407,11 @@
           console.warn("Servisas negrąžino features");
           statusBar.textContent = "Nerasta objektų";
           return;
+        }
+
+        if (data.features.length) {
+          console.log("Pirmas feature:", data.features[0]);
+          console.log("Pirmo feature geometrija:", data.features[0].geometry);
         }
 
         let skippedNoGeometry = 0;
