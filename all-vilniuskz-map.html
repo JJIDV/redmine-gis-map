@@ -26,6 +26,7 @@
 
     #map {
       flex: 1;
+      min-width: 0;
     }
 
     #sidebar {
@@ -94,6 +95,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      margin-top: 1px;
     }
 
     .legend-dot {
@@ -136,12 +138,18 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // PASIKEISK tik šitą URL į naują savo sluoksnį
-    const arcgisLayerUrl = "https://zemelapiai.vplanas.lt/arcgis/rest/services/TESTAVIMAI/Uzduotys_PROJ_test/MapServer/3";
+    // PASIKEISK ŠĮ URL
+    const arcgisLayerUrl =
+      "https://zemelapiai.vplanas.lt/arcgis/rest/services/TESTAVIMAI/Uzduotys_PROJ/MapServer/3";
 
-    // Jei reikia filtruoti tik produkcinę aplinką, gali keisti į:
+    // Jei nori filtruoti tik produkcinę aplinką:
     // const whereClause = "Aplinka = 2";
-    const whereClause = "1=2";
+    //
+    // Jei tik testinę:
+    // const whereClause = "Aplinka = 1";
+    //
+    // Jei viską:
+    const whereClause = "1=1";
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -221,48 +229,73 @@
     }
 
     function getGeometryTypeLabel(geometry) {
-      if (!geometry) return "Nežinoma geometrija";
-      if (geometry.rings) return "Poligonas";
-      if (geometry.paths) return "Linija";
+      if (!geometry) return "Nėra geometrijos";
+      if (Array.isArray(geometry.rings)) return "Poligonas";
+      if (Array.isArray(geometry.paths)) return "Linija";
       if (typeof geometry.x === "number" && typeof geometry.y === "number") return "Taškas";
       return "Nežinoma geometrija";
     }
 
     function polygonToLatLngs(geometry) {
-      if (!geometry || !geometry.rings) return [];
-      return geometry.rings.map(ring => ring.map(([x, y]) => lksToWgs(x, y)));
+      if (!geometry || !Array.isArray(geometry.rings) || !geometry.rings.length) {
+        return [];
+      }
+
+      return geometry.rings.map(ring =>
+        ring
+          .filter(pt => Array.isArray(pt) && pt.length >= 2)
+          .map(([x, y]) => lksToWgs(x, y))
+      ).filter(ring => ring.length);
     }
 
     function polylineToLatLngs(geometry) {
-      if (!geometry || !geometry.paths) return [];
-      return geometry.paths.map(path => path.map(([x, y]) => lksToWgs(x, y)));
+      if (!geometry || !Array.isArray(geometry.paths) || !geometry.paths.length) {
+        return [];
+      }
+
+      return geometry.paths.map(path =>
+        path
+          .filter(pt => Array.isArray(pt) && pt.length >= 2)
+          .map(([x, y]) => lksToWgs(x, y))
+      ).filter(path => path.length);
     }
 
     function pointToLatLng(geometry) {
-      if (!geometry || typeof geometry.x !== "number" || typeof geometry.y !== "number") return null;
+      if (!geometry || typeof geometry.x !== "number" || typeof geometry.y !== "number") {
+        return null;
+      }
+
       return lksToWgs(geometry.x, geometry.y);
     }
 
     function getGeometryCenter(geometry) {
       if (!geometry) return null;
 
-      if (geometry.rings) {
-        const latLngs = polygonToLatLngs(geometry);
-        if (!latLngs.length) return null;
-        const polygon = L.polygon(latLngs);
-        return polygon.getBounds().getCenter();
-      }
+      try {
+        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+          const latLngs = polygonToLatLngs(geometry);
+          if (!latLngs.length) return null;
 
-      if (geometry.paths) {
-        const latLngs = polylineToLatLngs(geometry);
-        if (!latLngs.length) return null;
-        const polyline = L.polyline(latLngs);
-        return polyline.getBounds().getCenter();
-      }
+          const polygon = L.polygon(latLngs);
+          const bounds = polygon.getBounds();
+          return bounds.isValid() ? bounds.getCenter() : null;
+        }
 
-      if (typeof geometry.x === "number" && typeof geometry.y === "number") {
-        const pt = pointToLatLng(geometry);
-        return pt ? L.latLng(pt[0], pt[1]) : null;
+        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+          const latLngs = polylineToLatLngs(geometry);
+          if (!latLngs.length) return null;
+
+          const polyline = L.polyline(latLngs);
+          const bounds = polyline.getBounds();
+          return bounds.isValid() ? bounds.getCenter() : null;
+        }
+
+        if (typeof geometry.x === "number" && typeof geometry.y === "number") {
+          const pt = pointToLatLng(geometry);
+          return pt ? L.latLng(pt[0], pt[1]) : null;
+        }
+      } catch (err) {
+        console.error("Klaida skaičiuojant geometrijos centrą:", err, geometry);
       }
 
       return null;
@@ -273,40 +306,44 @@
 
       if (!geometry) return null;
 
-      if (geometry.rings) {
-        const latLngs = polygonToLatLngs(geometry);
-        if (!latLngs.length) return null;
+      try {
+        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+          const latLngs = polygonToLatLngs(geometry);
+          if (!latLngs.length) return null;
 
-        return L.polygon(latLngs, {
-          color,
-          weight: 2,
-          fillColor: color,
-          fillOpacity: 0.28
-        });
-      }
+          return L.polygon(latLngs, {
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.28
+          });
+        }
 
-      if (geometry.paths) {
-        const latLngs = polylineToLatLngs(geometry);
-        if (!latLngs.length) return null;
+        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+          const latLngs = polylineToLatLngs(geometry);
+          if (!latLngs.length) return null;
 
-        return L.polyline(latLngs, {
-          color,
-          weight: 4,
-          opacity: 0.9
-        });
-      }
+          return L.polyline(latLngs, {
+            color,
+            weight: 4,
+            opacity: 0.9
+          });
+        }
 
-      if (typeof geometry.x === "number" && typeof geometry.y === "number") {
-        const latLng = pointToLatLng(geometry);
-        if (!latLng) return null;
+        if (typeof geometry.x === "number" && typeof geometry.y === "number") {
+          const latLng = pointToLatLng(geometry);
+          if (!latLng) return null;
 
-        return L.circleMarker(latLng, {
-          radius: 7,
-          color,
-          weight: 2,
-          fillColor: color,
-          fillOpacity: 0.85
-        });
+          return L.circleMarker(latLng, {
+            radius: 7,
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.85
+          });
+        }
+      } catch (err) {
+        console.error("Klaida kuriant Leaflet sluoksnį:", err, geometry);
       }
 
       return null;
@@ -319,20 +356,8 @@
     }
 
     function renderList(items) {
-      if (!listEl) return;
-
       listEl.innerHTML = "";
-
-      items.forEach((item) => {
-        listEl.appendChild(item.rowEl);
-
-        if (item.layer) {
-          if (items.includes(item)) {
-            item.layer.addTo(featureLayer);
-          }
-        }
-      });
-
+      items.forEach(item => listEl.appendChild(item.rowEl));
       statusBar.textContent = "Rodomi " + items.length + " objektai";
     }
 
@@ -347,7 +372,7 @@
         return;
       }
 
-      const filtered = allItems.filter((item) =>
+      const filtered = allItems.filter(item =>
         (item.searchText || "").toLowerCase().includes(q)
       );
 
@@ -357,14 +382,22 @@
 
     async function loadData() {
       try {
-        statusBar.textContent = "Kraunama...";
-
+        statusBar.textContent = "Kraunami duomenys...";
         featureLayer.clearLayers();
         allItems = [];
         listEl.innerHTML = "";
 
-        const resp = await fetch(createQueryUrl());
+        const url = createQueryUrl();
+        const resp = await fetch(url, { cache: "no-store" });
         const data = await resp.json();
+
+        console.log("Pilnas atsakymas:", data);
+        console.log("Features kiekis:", data.features?.length);
+
+        if (data.features?.length) {
+          console.log("Pirmas feature:", data.features[0]);
+          console.log("Pirmo feature geometrija:", data.features[0].geometry);
+        }
 
         if (data.error) {
           console.error("ArcGIS error:", data.error);
@@ -373,15 +406,30 @@
         }
 
         if (!data.features || !data.features.length) {
+          console.warn("Servisas negrąžino features");
           statusBar.textContent = "Nerasta objektų";
           return;
         }
 
-        data.features.forEach((f) => {
+        let skippedNoGeometry = 0;
+        let skippedNoLayer = 0;
+        let skippedNoCenter = 0;
+        let addedCount = 0;
+
+        data.features.forEach((f, index) => {
           const attrs = f.attributes || {};
           const geom = f.geometry;
 
-          const objectId = attrs.OBJECTID;
+          console.log("Feature #" + index, f);
+          console.log("Geometry #" + index, geom);
+
+          if (!geom) {
+            skippedNoGeometry++;
+            console.warn("Praleista: nėra geometrijos", f);
+            return;
+          }
+
+          const objectId = attrs.OBJECTID ?? "(be ID)";
           const companyCode = attrs.Imone;
           const environmentCode = attrs.Aplinka;
 
@@ -390,10 +438,24 @@
           const geometryTypeText = getGeometryTypeLabel(geom);
 
           const layer = createLeafletLayer(geom, companyCode);
-          if (!layer) return;
+          if (!layer) {
+            skippedNoLayer++;
+            console.warn("Praleista: nepavyko sukurti Leaflet sluoksnio", {
+              objectId,
+              geometry: geom
+            });
+            return;
+          }
 
           const center = getGeometryCenter(geom);
-          if (!center) return;
+          if (!center) {
+            skippedNoCenter++;
+            console.warn("Praleista: nepavyko apskaičiuoti centro", {
+              objectId,
+              geometry: geom
+            });
+            return;
+          }
 
           const popupHtml = `
             <b>Objektas #${objectId}</b><br/>
@@ -407,7 +469,6 @@
 
           const row = document.createElement("div");
           row.className = "feature-row";
-
           row.innerHTML = `
             <div class="row-title">Objektas #${objectId}</div>
             <div class="row-sub">
@@ -419,14 +480,19 @@
           `;
 
           row.onclick = () => {
-            if (layer.getBounds && typeof layer.getBounds === "function") {
-              const bounds = layer.getBounds();
-              if (bounds.isValid()) {
-                map.fitBounds(bounds.pad(0.2));
+            try {
+              if (layer.getBounds && typeof layer.getBounds === "function") {
+                const bounds = layer.getBounds();
+                if (bounds && bounds.isValid && bounds.isValid()) {
+                  map.fitBounds(bounds.pad(0.2));
+                } else {
+                  map.setView(center, 16);
+                }
               } else {
                 map.setView(center, 16);
               }
-            } else {
+            } catch (err) {
+              console.warn("Nepavyko fitBounds, naudojamas setView", err);
               map.setView(center, 16);
             }
 
@@ -452,22 +518,37 @@
             rowEl: row,
             searchText: `${objectId} ${companyText} ${environmentText} ${geometryTypeText}`
           });
+
+          addedCount++;
+        });
+
+        console.log("Suvestinė:", {
+          gautaIsServiso: data.features.length,
+          prideta: addedCount,
+          skippedNoGeometry,
+          skippedNoLayer,
+          skippedNoCenter
         });
 
         if (featureLayer.getLayers().length) {
-          map.fitBounds(featureLayer.getBounds().pad(0.08));
+          const bounds = featureLayer.getBounds();
+          if (bounds.isValid()) {
+            map.fitBounds(bounds.pad(0.08));
+          }
         }
 
         renderList(allItems);
+
+        if (!allItems.length) {
+          statusBar.textContent = "Servisas grąžino duomenis, bet nieko nepavyko nubraižyti";
+        }
       } catch (e) {
-        console.error(e);
+        console.error("Bendra klaida loadData():", e);
         statusBar.textContent = "Klaida įkeliant duomenis";
       }
     }
 
-    if (filterInput) {
-      filterInput.addEventListener("input", applyFilter);
-    }
+    filterInput.addEventListener("input", applyFilter);
 
     loadData();
   </script>
