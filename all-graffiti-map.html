@@ -2,7 +2,7 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
-  <title>Graffiti – vykdomi darbai</title>
+  <title>Projektai pagal įmones</title>
 
   <link
     rel="stylesheet"
@@ -13,8 +13,7 @@
     html, body {
       height: 100%;
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     #app {
@@ -25,15 +24,17 @@
 
     #map {
       flex: 1;
+      min-width: 0;
     }
 
     #sidebar {
-      flex: 0 0 160px;
-      max-width: 160px;
+      flex: 0 0 180px;
+      max-width: 180px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
       font-size: 12px;
+      background: #fff;
     }
 
     #sidebar-header {
@@ -51,11 +52,25 @@
       border-bottom: 1px solid #ddd;
       outline: none;
       font-size: 12px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    #env-filter {
+      padding: 4px 6px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 12px;
+      box-sizing: border-box;
+      width: 100%;
+      background: #fff;
     }
 
     #list {
       flex: 1;
       overflow-y: auto;
+      font-size: 12px;
     }
 
     .feature-row {
@@ -89,7 +104,7 @@
       text-overflow: ellipsis;
     }
 
-    .row-coords {
+    .row-env {
       color: #777;
       font-size: 10px;
       margin-top: 1px;
@@ -108,7 +123,9 @@
     }
 
     @media (max-width: 600px) {
-      #sidebar { display: none; }
+      #sidebar {
+        display: none;
+      }
     }
   </style>
 </head>
@@ -117,8 +134,16 @@
   <div id="map"></div>
 
   <div id="sidebar">
-    <div id="sidebar-header">Vykdomi darbai</div>
-    <input id="filter" type="text" placeholder="Filtruoti..." />
+    <div id="sidebar-header">Projektai pagal įmones</div>
+
+    <input id="filter" type="text" placeholder="Filtruoti pagal ID / įmonę..." />
+
+    <select id="env-filter">
+      <option value="">Visos aplinkos</option>
+      <option value="1">Testinė</option>
+      <option value="2">Produkcinė</option>
+    </select>
+
     <div id="list"></div>
     <div id="status-bar">Kraunama...</div>
   </div>
@@ -129,55 +154,38 @@
 <script>
   // ===== KONFIGŪRACIJA =====
   const arcgisLayerUrl =
-    "https://opencity.idvilnius.lt/atviras/rest/services/Miesto_tvark/Grafiti_view_Public/MapServer/0";
+    "https://zemelapiai.vplanas.lt/arcgis/rest/services/TESTAVIMAI/Uzduotys_PROJ_test/FeatureServer/3";
 
-  // ✅ Filtras: rodyti tik „Vykdoma (Rangovai)“
-  const whereClause = "statusas_name = 'Vykdoma (Rangovai)'";
+  const companyLookup = {
+    0: "Nenurodyta",
+    1: "VMSA",
+    2: "SISP",
+    3: "VVT",
+    4: "Grinda",
+    5: "Biseris",
+    6: "Maniga",
+    7: "Gatas"
+  };
 
-  // ===== LKS -> WGS84 konversija =====
-  function lksToWgs(x, y) {
-    const k0 = 0.9998;
-    const a = 6378137.0;
-    const e2 = 0.00669438002290;
-    const lon0 = 24 * Math.PI / 180;
-    const x0 = 500000;
-    const dx = x - x0;
-    const dy = y;
-    const M = dy / k0;
-    const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
-    const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const environmentLookup = {
+    1: "Testinė",
+    2: "Produkcinė"
+  };
 
-    let phi1 = mu
-      + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu)
-      + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
-      + (151 * e1 ** 3 / 96) * Math.sin(6 * mu)
-      + (1097 * e1 ** 4 / 512) * Math.sin(8 * mu);
-
-    const sinPhi1 = Math.sin(phi1);
-    const cosPhi1 = Math.cos(phi1);
-    const tanPhi1 = Math.tan(phi1);
-    const N1 = a / Math.sqrt(1 - e2 * sinPhi1 * sinPhi1);
-    const R1 = N1 * (1 - e2) / (1 - e2 * sinPhi1 * sinPhi1);
-    const D = dx / (N1 * k0);
-
-    const lat =
-      phi1 - (N1 * tanPhi1 / R1) *
-      (D * D / 2 -
-        (5 + 3 * tanPhi1 * tanPhi1 + 10 * e2 * cosPhi1 * cosPhi1 - 4 * e2 * e2 - 9 * e2) * D ** 4 / 24 +
-        (61 + 90 * tanPhi1 * tanPhi1 + 298 * e2 * cosPhi1 * cosPhi1 + 45 * tanPhi1 ** 4 - 252 * e2 - 3 * e2 * e2) * D ** 6 / 720);
-
-    const lon =
-      lon0 +
-      (D -
-        (1 + 2 * tanPhi1 * tanPhi1 + e2 * cosPhi1 * cosPhi1) * D ** 3 / 6 +
-        (5 - 2 * e2 + 28 * tanPhi1 * tanPhi1 - 3 * e2 * e2 + 8 * e2 + 24 * tanPhi1 ** 4) * D ** 5 / 120) /
-      cosPhi1;
-
-    return [lat * 180 / Math.PI, lon * 180 / Math.PI];
-  }
+  const companyColors = {
+    0: "#808080",
+    1: "#1f78b4",
+    2: "#33a02c",
+    3: "#e31a1c",
+    4: "#ff7f00",
+    5: "#6a3d9a",
+    6: "#b15928",
+    7: "#17a2b8"
+  };
 
   // ===== ŽEMĖLAPIS =====
-  const map = L.map("map").setView([54.69, 25.28], 12);
+  const map = L.map("map").setView([54.69, 25.28], 11);
+
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap"
@@ -185,17 +193,39 @@
 
   const listEl = document.getElementById("list");
   const filterInput = document.getElementById("filter");
+  const envFilter = document.getElementById("env-filter");
   const statusBar = document.getElementById("status-bar");
+
   let allItems = [];
+  let featureLayer = L.featureGroup().addTo(map);
+
+  function getCompanyText(code) {
+    return companyLookup[code] || ("Įmonės kodas: " + code);
+  }
+
+  function getEnvironmentText(code) {
+    return environmentLookup[code] || ("Aplinkos kodas: " + code);
+  }
+
+  function getCompanyColor(code) {
+    return companyColors[code] || "#666666";
+  }
 
   function createQueryUrl() {
     const params = new URLSearchParams({
-      where: whereClause,
-      outFields: "OBJECTID,tvark_tipas_name,statusas_name,adresas,rangovas,X_koord,Y_koord",
-      returnGeometry: "false",
-      f: "pjson"
+      where: "1=1",
+      outFields: "OBJECTID,Imone,Aplinka",
+      returnGeometry: "true",
+      f: "geojson"
     });
+
     return arcgisLayerUrl + "/query?" + params.toString();
+  }
+
+  function clearActiveRows() {
+    document
+      .querySelectorAll(".feature-row.active")
+      .forEach((el) => el.classList.remove("active"));
   }
 
   function renderList(items) {
@@ -205,19 +235,39 @@
   }
 
   function applyFilter() {
-    const q = (filterInput.value || "").trim().toLowerCase();
-    if (!q) return renderList(allItems);
-    const filtered = allItems.filter((it) =>
-      (it.searchText || "").toLowerCase().includes(q)
-    );
+    const textQuery = (filterInput.value || "").trim().toLowerCase();
+    const envValue = envFilter.value;
+
+    featureLayer.clearLayers();
+
+    const filtered = allItems.filter((item) => {
+      const textOk = !textQuery ||
+        (item.searchText || "").toLowerCase().includes(textQuery);
+
+      const envOk = !envValue || String(item.environmentCode) === envValue;
+
+      return textOk && envOk;
+    });
+
+    filtered.forEach((item) => item.layer.addTo(featureLayer));
     renderList(filtered);
   }
 
-  if (filterInput) filterInput.addEventListener("input", applyFilter);
+  if (filterInput) {
+    filterInput.addEventListener("input", applyFilter);
+  }
+
+  if (envFilter) {
+    envFilter.addEventListener("change", applyFilter);
+  }
 
   async function loadData() {
     try {
-      const resp = await fetch(createQueryUrl());
+      const resp = await fetch(createQueryUrl(), {
+        cache: "no-store",
+        mode: "cors"
+      });
+
       const data = await resp.json();
 
       if (!data.features?.length) {
@@ -225,56 +275,81 @@
         return;
       }
 
-      const markers = [];
+      const boundsCollector = [];
 
-      data.features.forEach((f) => {
-        const a = f.attributes || {};
-        if (!a.X_koord || !a.Y_koord) return;
+      data.features.forEach((feature) => {
+        const props = feature.properties || {};
+        const geometry = feature.geometry;
 
-        const [lat, lon] = lksToWgs(a.X_koord, a.Y_koord);
+        if (!geometry) return;
 
-        const rangovas = a.rangovas || "Nežinomas rangovas";
-        const adresas = a.adresas || "";
-        const statusas = a.statusas_name || "";
-        const tipas = a.tvark_tipas_name || "";
+        const objectId = props.OBJECTID;
+        const companyCode = props.Imone;
+        const environmentCode = props.Aplinka;
 
-        const popupHtml =
-          `<b>${rangovas}</b><br>${adresas}<br>` +
-          `Statusas: ${statusas}<br>Tipas: ${tipas}<br>` +
-          `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
+        const companyText = getCompanyText(companyCode);
+        const environmentText = getEnvironmentText(environmentCode);
+        const color = getCompanyColor(companyCode);
 
-        const marker = L.marker([lat, lon]).addTo(map);
-        marker.bindPopup(popupHtml);
+        const layer = L.geoJSON(feature, {
+          style: {
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.25
+          }
+        });
+
+        const bounds = layer.getBounds();
+        if (!bounds.isValid()) return;
+
+        const center = bounds.getCenter();
+
+        const popupHtml = `
+          <b>Objektas #${objectId}</b><br>
+          Įmonė: ${companyText}<br>
+          Aplinka: ${environmentText}
+        `;
+
+        layer.bindPopup(popupHtml);
+        layer.addTo(featureLayer);
+        boundsCollector.push(layer);
 
         const row = document.createElement("div");
         row.className = "feature-row";
         row.innerHTML = `
-          <div class="row-title">${rangovas}</div>
-          <div class="row-sub">${adresas || statusas}</div>
-          <div class="row-coords">Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}</div>
+          <div class="row-title">Objektas #${objectId}</div>
+          <div class="row-sub">${companyText}</div>
+          <div class="row-env">Aplinka: ${environmentText}</div>
         `;
 
         row.onclick = () => {
-          map.setView([lat, lon], 18);
-          marker.openPopup();
-          document.querySelectorAll(".feature-row.active").forEach((el) => el.classList.remove("active"));
+          map.fitBounds(bounds.pad(0.2));
+          layer.openPopup();
+          clearActiveRows();
           row.classList.add("active");
         };
 
-        marker.on("click", () => {
+        layer.on("click", () => {
           row.scrollIntoView({ behavior: "smooth", block: "center" });
-          document.querySelectorAll(".feature-row.active").forEach((el) => el.classList.remove("active"));
+          clearActiveRows();
           row.classList.add("active");
         });
 
-        const searchText = `${rangovas} ${adresas} ${statusas} ${tipas}`;
-        allItems.push({ marker, rowEl: row, searchText });
-        markers.push(marker);
+        const searchText = `${objectId} ${companyText} ${environmentText}`;
+
+        allItems.push({
+          layer,
+          rowEl: row,
+          searchText,
+          environmentCode,
+          center
+        });
       });
 
-      if (markers.length) {
-        const g = L.featureGroup(markers);
-        map.fitBounds(g.getBounds().pad(0.1));
+      if (boundsCollector.length) {
+        const g = L.featureGroup(boundsCollector);
+        map.fitBounds(g.getBounds().pad(0.08));
       }
 
       renderList(allItems);
