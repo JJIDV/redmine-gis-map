@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <title>Maniga objektų žemėlapis</title>
+
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.1/dist/proj4.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #app {
+      display: flex;
+      height: 100%;
+      width: 100%;
+    }
+
+    #map {
+      flex: 1;
+      min-width: 0;
+    }
+
+    #sidebar {
+      flex: 0 0 220px;
+      max-width: 220px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+      background: #fff;
+    }
+
+    #sidebar-header {
+      padding: 8px 10px;
+      border-bottom: 1px solid #ddd;
+      background: #f7f7f7;
+      font-weight: 600;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #filter {
+      padding: 6px 8px;
+      border: none;
+      border-bottom: 1px solid #ddd;
+      outline: none;
+      font-size: 12px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    #list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    .feature-row {
+      padding: 6px 8px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .feature-row:hover {
+      background: #f0f8ff;
+    }
+
+    .feature-row.active {
+      background: #e6f2ff;
+    }
+
+    .row-title {
+      font-weight: 600;
+      margin-bottom: 2px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-sub,
+    .row-env,
+    .row-type {
+      color: #555;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    #status-bar {
+      padding: 4px 6px;
+      border-top: 1px solid #ddd;
+      font-size: 10px;
+      color: #555;
+      background: #fafafa;
+      text-align: center;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    @media (max-width: 600px) {
+      #sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">Maniga objektai</div>
+      <input id="filter" type="text" placeholder="Filtruoti pagal ID / aplinką / tipą..." />
+      <div id="list"></div>
+      <div id="status-bar">Kraunama...</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const arcgisLayerUrl =
+      "https://opencity.idvilnius.lt/atviras/rest/services/Miesto_tvark/Uzduotys_PROJ_test/FeatureServer/3";
+
+    // Tikslinė įmonė
+    const TARGET_COMPANY_CODE = 6;
+    const TARGET_COMPANY_NAME = "Maniga";
+
+    const companyLookup = {
+      0: "Nenurodyta",
+      1: "VMSA",
+      2: "SISP",
+      3: "VVT",
+      4: "Grinda",
+      5: "Biseris",
+      6: "Maniga",
+      7: "Gatas"
+    };
+
+    const environmentLookup = {
+      1: "Testinė",
+      2: "Produkcinė"
+    };
+
+    const companyColors = {
+      0: "#808080",
+      1: "#1f78b4",
+      2: "#33a02c",
+      3: "#e31a1c",
+      4: "#ff7f00",
+      5: "#6a3d9a",
+      6: "#b15928",
+      7: "#17a2b8"
+    };
+
+    proj4.defs(
+      "EPSG:3346",
+      "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs"
+    );
+
+    function lksToWgs(x, y) {
+      const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
+      return [lat, lon];
+    }
+
+    function getCompanyText(code) {
+      return companyLookup[code] || ("Įmonės kodas: " + code);
+    }
+
+    function getEnvironmentText(code) {
+      return environmentLookup[code] || ("Aplinkos kodas: " + code);
+    }
+
+    function getCompanyColor(code) {
+      return companyColors[code] || "#666666";
+    }
+
+    function getGeometryTypeLabel(geometry) {
+      if (!geometry) return "Nėra geometrijos";
+      if (Array.isArray(geometry.rings)) return "Poligonas";
+      if (Array.isArray(geometry.paths)) return "Linija";
+      if (typeof geometry.x === "number" && typeof geometry.y === "number") return "Taškas";
+      return "Nežinoma geometrija";
+    }
+
+    function polygonToLatLngs(geometry) {
+      if (!geometry || !Array.isArray(geometry.rings) || !geometry.rings.length) {
+        return [];
+      }
+
+      return geometry.rings
+        .map(ring =>
+          ring
+            .filter(pt => Array.isArray(pt) && pt.length >= 2)
+            .map(([x, y]) => lksToWgs(x, y))
+        )
+        .filter(ring => ring.length);
+    }
+
+    function polylineToLatLngs(geometry) {
+      if (!geometry || !Array.isArray(geometry.paths) || !geometry.paths.length) {
+        return [];
+      }
+
+      return geometry.paths
+        .map(path =>
+          path
+            .filter(pt => Array.isArray(pt) && pt.length >= 2)
+            .map(([x, y]) => lksToWgs(x, y))
+        )
+        .filter(path => path.length);
+    }
+
+    function pointToLatLng(geometry) {
+      if (!geometry || typeof geometry.x !== "number" || typeof geometry.y !== "number") {
+        return null;
+      }
+
+      return lksToWgs(geometry.x, geometry.y);
+    }
+
+    function getGeometryCenter(geometry) {
+      if (!geometry) return null;
+
+      try {
+        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+          const latLngs = polygonToLatLngs(geometry);
+          if (!latLngs.length) return null;
+          const polygon = L.polygon(latLngs);
+          const bounds = polygon.getBounds();
+          return bounds.isValid() ? bounds.getCenter() : null;
+        }
+
+        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+          const latLngs = polylineToLatLngs(geometry);
+          if (!latLngs.length) return null;
+          const polyline = L.polyline(latLngs);
+          const bounds = polyline.getBounds();
+          return bounds.isValid() ? bounds.getCenter() : null;
+        }
+
+        if (typeof geometry.x === "number" && typeof geometry.y === "number") {
+          const pt = pointToLatLng(geometry);
+          return pt ? L.latLng(pt[0], pt[1]) : null;
+        }
+      } catch (err) {
+        console.error("Klaida skaičiuojant geometrijos centrą:", err, geometry);
+      }
+
+      return null;
+    }
+
+    function createLeafletLayer(geometry, companyCode) {
+      const color = getCompanyColor(companyCode);
+
+      if (!geometry) return null;
+
+      try {
+        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+          const latLngs = polygonToLatLngs(geometry);
+          if (!latLngs.length) return null;
+
+          return L.polygon(latLngs, {
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.28
+          });
+        }
+
+        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+          const latLngs = polylineToLatLngs(geometry);
+          if (!latLngs.length) return null;
+
+          return L.polyline(latLngs, {
+            color,
+            weight: 4,
+            opacity: 0.9
+          });
+        }
+
+        if (typeof geometry.x === "number" && typeof geometry.y === "number") {
+          const latLng = pointToLatLng(geometry);
+          if (!latLng) return null;
+
+          return L.circleMarker(latLng, {
+            radius: 7,
+            color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.85
+          });
+        }
+      } catch (err) {
+        console.error("Klaida kuriant Leaflet sluoksnį:", err, geometry);
+      }
+
+      return null;
+    }
+
+    const map = L.map("map").setView([54.6872, 25.2797], 11);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const statusBar = document.getElementById("status-bar");
+
+    let allItems = [];
+    let featureLayer = L.featureGroup().addTo(map);
+
+    function createQueryUrl() {
+      const params = new URLSearchParams({
+        where: `Imone = ${TARGET_COMPANY_CODE}`,
+        outFields: "*",
+        returnGeometry: "true",
+        f: "json"
+      });
+
+      const url = arcgisLayerUrl + "/query?" + params.toString();
+      console.log("Query URL:", url);
+      return url;
+    }
+
+    function clearActiveRows() {
+      document
+        .querySelectorAll(".feature-row.active")
+        .forEach(el => el.classList.remove("active"));
+    }
+
+    function renderList(items) {
+      listEl.innerHTML = "";
+      items.forEach(item => listEl.appendChild(item.rowEl));
+      statusBar.textContent = "Rodomi " + items.length + " objektai";
+    }
+
+    function applyFilter() {
+      const q = filterInput.value.trim().toLowerCase();
+
+      featureLayer.clearLayers();
+
+      if (!q) {
+        allItems.forEach(item => item.layer.addTo(featureLayer));
+        renderList(allItems);
+        return;
+      }
+
+      const filtered = allItems.filter(item =>
+        (item.searchText || "").toLowerCase().includes(q)
+      );
+
+      filtered.forEach(item => item.layer.addTo(featureLayer));
+      renderList(filtered);
+    }
+
+    async function loadData() {
+      try {
+        statusBar.textContent = "Kraunami duomenys...";
+        featureLayer.clearLayers();
+        allItems = [];
+        listEl.innerHTML = "";
+
+        const url = createQueryUrl();
+
+        const resp = await fetch(url, {
+          cache: "no-store",
+          mode: "cors"
+        });
+
+        const data = await resp.json();
+        console.log("Pilnas query atsakymas:", data);
+
+        if (data.error) {
+          console.error("ArcGIS error:", data.error);
+          statusBar.textContent =
+            "Serverio klaida: " +
+            (data.error.message || "nežinoma") +
+            (data.error.details && data.error.details.length
+              ? " | " + data.error.details.join(" | ")
+              : "");
+          return;
+        }
+
+        if (!data.features || !data.features.length) {
+          statusBar.textContent = "Maniga objektų nerasta";
+          return;
+        }
+
+        let skippedNoGeometry = 0;
+        let skippedNoLayer = 0;
+        let skippedNoCenter = 0;
+        let skippedWrongCompany = 0;
+        let addedCount = 0;
+
+        data.features.forEach((f, index) => {
+          const attrs = f.attributes || {};
+          const geom = f.geometry;
+          const companyCode = attrs.Imone;
+
+          // Papildoma apsauga, net jei query lygyje filtruojam
+          if (Number(companyCode) !== TARGET_COMPANY_CODE) {
+            skippedWrongCompany++;
+            return;
+          }
+
+          if (!geom) {
+            skippedNoGeometry++;
+            return;
+          }
+
+          const objectId = attrs.OBJECTID ?? "(be ID)";
+          const environmentCode = attrs.Aplinka;
+
+          const companyText = getCompanyText(companyCode);
+          const environmentText = getEnvironmentText(environmentCode);
+          const geometryTypeText = getGeometryTypeLabel(geom);
+
+          const layer = createLeafletLayer(geom, companyCode);
+          if (!layer) {
+            skippedNoLayer++;
+            return;
+          }
+
+          const center = getGeometryCenter(geom);
+          if (!center) {
+            skippedNoCenter++;
+            return;
+          }
+
+          const popupHtml = `
+            <b>Maniga objektas #${objectId}</b><br/>
+            Aplinka: ${environmentText}<br/>
+            Geometrija: ${geometryTypeText}
+          `;
+
+          layer.bindPopup(popupHtml);
+          layer.addTo(featureLayer);
+
+          const row = document.createElement("div");
+          row.className = "feature-row";
+          row.innerHTML = `
+            <div class="row-title">Objektas #${objectId}</div>
+            <div class="row-sub">
+              <span class="legend-dot" style="background:${getCompanyColor(companyCode)};"></span>
+              ${companyText}
+            </div>
+            <div class="row-env">Aplinka: ${environmentText}</div>
+            <div class="row-type">${geometryTypeText}</div>
+          `;
+
+          row.onclick = () => {
+            try {
+              if (layer.getBounds && typeof layer.getBounds === "function") {
+                const bounds = layer.getBounds();
+                if (bounds && bounds.isValid && bounds.isValid()) {
+                  map.fitBounds(bounds.pad(0.2));
+                } else {
+                  map.setView(center, 16);
+                }
+              } else {
+                map.setView(center, 16);
+              }
+            } catch (err) {
+              map.setView(center, 16);
+            }
+
+            layer.openPopup();
+            clearActiveRows();
+            row.classList.add("active");
+          };
+
+          layer.on("click", () => {
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+            clearActiveRows();
+            row.classList.add("active");
+          });
+
+          allItems.push({
+            objectId,
+            companyCode,
+            environmentCode,
+            companyText,
+            environmentText,
+            geometryTypeText,
+            layer,
+            rowEl: row,
+            searchText: `${objectId} ${environmentText} ${geometryTypeText} ${TARGET_COMPANY_NAME}`
+          });
+
+          addedCount++;
+        });
+
+        console.log("Suvestinė:", {
+          gautaIsServiso: data.features.length,
+          prideta: addedCount,
+          skippedWrongCompany,
+          skippedNoGeometry,
+          skippedNoLayer,
+          skippedNoCenter
+        });
+
+        if (featureLayer.getLayers().length) {
+          const bounds = featureLayer.getBounds();
+          if (bounds.isValid()) {
+            map.fitBounds(bounds.pad(0.08));
+          }
+        }
+
+        renderList(allItems);
+
+        if (!allItems.length) {
+          statusBar.textContent = "Maniga objektai rasti, bet nepavyko jų nubraižyti";
+        }
+      } catch (e) {
+        console.error("Bendra klaida loadData():", e);
+        statusBar.textContent = "Klaida įkeliant duomenis";
+      }
+    }
+
+    filterInput.addEventListener("input", applyFilter);
+
+    loadData();
+  </script>
+</body>
+</html>
