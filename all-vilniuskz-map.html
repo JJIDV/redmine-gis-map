@@ -118,6 +118,16 @@
       word-break: break-word;
     }
 
+    .overlap-select-item {
+      padding: 6px 4px;
+      cursor: pointer;
+      border-top: 1px solid #eee;
+    }
+
+    .overlap-select-item:hover {
+      background: #f0f8ff;
+    }
+
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -140,9 +150,8 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ČIA įrašyk savo tikrą sluoksnio URL
     const arcgisLayerUrl =
-      "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3/";
+      "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -282,7 +291,8 @@
             color,
             weight: 2,
             fillColor: color,
-            fillOpacity: 0.28
+            fillOpacity: 0.28,
+            interactive: false
           });
         }
 
@@ -293,7 +303,8 @@
           return L.polyline(latLngs, {
             color,
             weight: 4,
-            opacity: 0.9
+            opacity: 0.9,
+            interactive: false
           });
         }
 
@@ -306,7 +317,8 @@
             color,
             weight: 2,
             fillColor: color,
-            fillOpacity: 0.85
+            fillOpacity: 0.85,
+            interactive: false
           });
         }
       } catch (err) {
@@ -360,19 +372,177 @@
 
       featureLayer.clearLayers();
 
-      if (!q) {
-        allItems.forEach(item => item.layer.addTo(featureLayer));
-        renderList(allItems);
+      const items = q
+        ? allItems.filter(item =>
+            (item.searchText || "").toLowerCase().includes(q)
+          )
+        : allItems;
+
+      items.forEach(item => item.layer.addTo(featureLayer));
+      renderList(items);
+    }
+
+    function pointInPolygon(point, polygonPoints) {
+      let inside = false;
+
+      for (let i = 0, j = polygonPoints.length - 1; i < polygonPoints.length; j = i++) {
+        const xi = polygonPoints[i].x;
+        const yi = polygonPoints[i].y;
+        const xj = polygonPoints[j].x;
+        const yj = polygonPoints[j].y;
+
+        const intersect =
+          yi > point.y !== yj > point.y &&
+          point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi;
+
+        if (intersect) inside = !inside;
+      }
+
+      return inside;
+    }
+
+    function distanceToSegment(p, a, b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+
+      if (dx === 0 && dy === 0) {
+        return p.distanceTo(a);
+      }
+
+      const t = Math.max(
+        0,
+        Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))
+      );
+
+      const projected = L.point(a.x + t * dx, a.y + t * dy);
+      return p.distanceTo(projected);
+    }
+
+    function itemContainsClick(item, latlng) {
+      const geom = item.geometry;
+      if (!geom) return false;
+
+      const clickPoint = map.latLngToLayerPoint(latlng);
+
+      if (Array.isArray(geom.rings)) {
+        const rings = polygonToLatLngs(geom);
+
+        return rings.some(function (ring) {
+          const points = ring.map(function (ll) {
+            return map.latLngToLayerPoint(L.latLng(ll[0], ll[1]));
+          });
+
+          return pointInPolygon(clickPoint, points);
+        });
+      }
+
+      if (Array.isArray(geom.paths)) {
+        const paths = polylineToLatLngs(geom);
+        const tolerance = 8;
+
+        return paths.some(function (path) {
+          const points = path.map(function (ll) {
+            return map.latLngToLayerPoint(L.latLng(ll[0], ll[1]));
+          });
+
+          for (let i = 1; i < points.length; i++) {
+            if (distanceToSegment(clickPoint, points[i - 1], points[i]) <= tolerance) {
+              return true;
+            }
+          }
+
+          return false;
+        });
+      }
+
+      if (typeof geom.x === "number" && typeof geom.y === "number") {
+        const pt = pointToLatLng(geom);
+        if (!pt) return false;
+
+        const markerPoint = map.latLngToLayerPoint(L.latLng(pt[0], pt[1]));
+        return clickPoint.distanceTo(markerPoint) <= 10;
+      }
+
+      return false;
+    }
+
+    function selectItem(item, latlng) {
+      clearActiveRows();
+
+      if (item.rowEl) {
+        item.rowEl.classList.add("active");
+        item.rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      const popupHtml = `
+        <b>Objektas #${item.objectId}</b><br/>
+        Įmonė: ${item.companyText}<br/>
+        Aplinka: ${item.environmentText}<br/>
+        Geometrija: ${item.geometryTypeText}
+      `;
+
+      L.popup()
+        .setLatLng(latlng || item.center)
+        .setContent(popupHtml)
+        .openOn(map);
+    }
+
+    function showMultiSelectPopup(items, latlng) {
+      const html = `
+        <div style="min-width:190px">
+          <b>Pasirinkite objektą:</b>
+          ${items
+            .map(function (item, index) {
+              return `
+                <div class="overlap-select-item" data-index="${index}">
+                  <b>Objektas #${item.objectId}</b><br/>
+                  <span>
+                    <span class="legend-dot" style="background:${getCompanyColor(item.companyCode)};"></span>
+                    ${item.companyText}
+                  </span><br/>
+                  <small>${item.environmentText} · ${item.geometryTypeText}</small>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      `;
+
+      const popup = L.popup()
+        .setLatLng(latlng)
+        .setContent(html)
+        .openOn(map);
+
+      setTimeout(function () {
+        document.querySelectorAll(".overlap-select-item").forEach(function (el) {
+          el.addEventListener("click", function () {
+            const index = Number(el.getAttribute("data-index"));
+            const item = items[index];
+            map.closePopup(popup);
+            selectItem(item, latlng);
+          });
+        });
+      }, 0);
+    }
+
+    map.on("click", function (e) {
+      const visibleItems = allItems.filter(function (item) {
+        return featureLayer.hasLayer(item.layer);
+      });
+
+      const hits = visibleItems.filter(function (item) {
+        return itemContainsClick(item, e.latlng);
+      });
+
+      if (!hits.length) return;
+
+      if (hits.length === 1) {
+        selectItem(hits[0], e.latlng);
         return;
       }
 
-      const filtered = allItems.filter(item =>
-        (item.searchText || "").toLowerCase().includes(q)
-      );
-
-      filtered.forEach(item => item.layer.addTo(featureLayer));
-      renderList(filtered);
-    }
+      showMultiSelectPopup(hits, e.latlng);
+    });
 
     async function loadData() {
       try {
@@ -409,11 +579,6 @@
           return;
         }
 
-        if (data.features.length) {
-          console.log("Pirmas feature:", data.features[0]);
-          console.log("Pirmo feature geometrija:", data.features[0].geometry);
-        }
-
         let skippedNoGeometry = 0;
         let skippedNoLayer = 0;
         let skippedNoCenter = 0;
@@ -422,9 +587,6 @@
         data.features.forEach((f, index) => {
           const attrs = f.attributes || {};
           const geom = f.geometry;
-
-          console.log("Feature #" + index, f);
-          console.log("Geometry #" + index, geom);
 
           if (!geom) {
             skippedNoGeometry++;
@@ -460,14 +622,6 @@
             return;
           }
 
-          const popupHtml = `
-            <b>Objektas #${objectId}</b><br/>
-            Įmonė: ${companyText}<br/>
-            Aplinka: ${environmentText}<br/>
-            Geometrija: ${geometryTypeText}
-          `;
-
-          layer.bindPopup(popupHtml);
           layer.addTo(featureLayer);
 
           const row = document.createElement("div");
@@ -481,6 +635,20 @@
             <div class="row-env">Aplinka: ${environmentText}</div>
             <div class="row-type">${geometryTypeText}</div>
           `;
+
+          const item = {
+            objectId,
+            companyCode,
+            environmentCode,
+            companyText,
+            environmentText,
+            geometryTypeText,
+            geometry: geom,
+            center,
+            layer,
+            rowEl: row,
+            searchText: `${objectId} ${companyText} ${environmentText} ${geometryTypeText}`
+          };
 
           row.onclick = () => {
             try {
@@ -499,29 +667,10 @@
               map.setView(center, 16);
             }
 
-            layer.openPopup();
-            clearActiveRows();
-            row.classList.add("active");
+            selectItem(item, center);
           };
 
-          layer.on("click", () => {
-            row.scrollIntoView({ behavior: "smooth", block: "center" });
-            clearActiveRows();
-            row.classList.add("active");
-          });
-
-          allItems.push({
-            objectId,
-            companyCode,
-            environmentCode,
-            companyText,
-            environmentText,
-            geometryTypeText,
-            layer,
-            rowEl: row,
-            searchText: `${objectId} ${companyText} ${environmentText} ${geometryTypeText}`
-          });
-
+          allItems.push(item);
           addedCount++;
         });
 
