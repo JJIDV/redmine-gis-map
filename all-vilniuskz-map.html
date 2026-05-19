@@ -225,6 +225,8 @@
     const ENVIRONMENT_VALUE = 1;
 
     const STATUS_FIELD = "Statusas";
+    const COMPANY_FIELD = "Imone";
+
     const EXCLUDED_STATUS_CODES = ["0"];
 
     const STATUS_DOMAIN = [
@@ -243,6 +245,15 @@
       return acc;
     }, {});
 
+    const statusFillColors = {
+      "1": "#f59e0b", // Vykdoma - oranžinė
+      "2": "#166534", // Patvirtinta ir uždaryta - tamsesnė žalia
+      "4": "#86efac", // Atlikta UVS - šviesiai žalia
+      "5": "#dc2626", // Atšaukta UVS - raudona
+      "6": "#facc15", // Sukurta UVS - geltona
+      "7": "#dc2626"  // Atšaukta EOP - raudona
+    };
+
     const companyLookup = {
       0: "Nenurodyta",
       1: "VMSA",
@@ -254,20 +265,20 @@
       7: "Gatas"
     };
 
+    const companyStrokeColors = {
+      0: "#6b7280", // Nenurodyta
+      1: "#1f78b4", // VMSA
+      2: "#33a02c", // SISP
+      3: "#e31a1c", // VVT
+      4: "#ff7f00", // Grinda
+      5: "#6a3d9a", // Biseris
+      6: "#b15928", // Maniga
+      7: "#17a2b8"  // Gatas
+    };
+
     const environmentLookup = {
       1: "Testinė",
       2: "Produkcinė"
-    };
-
-    const companyColors = {
-      0: "#808080",
-      1: "#1f78b4",
-      2: "#33a02c",
-      3: "#e31a1c",
-      4: "#ff7f00",
-      5: "#6a3d9a",
-      6: "#b15928",
-      7: "#17a2b8"
     };
 
     proj4.defs(
@@ -301,6 +312,11 @@
       return statusLookup[key] || ("Nežinomas statusas (" + key + ")");
     }
 
+    function getStatusFillColor(statusValue) {
+      const key = normalizeStatusValue(statusValue);
+      return statusFillColors[key] || "#d1d5db";
+    }
+
     function getCompanyText(code) {
       return companyLookup[code] || ("Įmonės kodas: " + code);
     }
@@ -309,8 +325,8 @@
       return environmentLookup[code] || ("Aplinkos kodas: " + code);
     }
 
-    function getCompanyColor(code) {
-      return companyColors[code] || "#666666";
+    function getCompanyStrokeColor(code) {
+      return companyStrokeColors[code] || "#374151";
     }
 
     function getGeometryTypeLabel(geometry) {
@@ -400,8 +416,9 @@
       return null;
     }
 
-    function createLeafletLayer(geometry, companyCode) {
-      const color = getCompanyColor(companyCode);
+    function createLeafletLayer(geometry, companyCode, statusValue) {
+      const strokeColor = getCompanyStrokeColor(companyCode);
+      const fillColor = getStatusFillColor(statusValue);
 
       if (!geometry) return null;
 
@@ -411,10 +428,11 @@
           if (!latLngs.length) return null;
 
           return L.polygon(latLngs, {
-            color: color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.28,
+            color: strokeColor,
+            weight: 3,
+            opacity: 1,
+            fillColor: fillColor,
+            fillOpacity: 0.45,
             interactive: false
           });
         }
@@ -424,9 +442,9 @@
           if (!latLngs.length) return null;
 
           return L.polyline(latLngs, {
-            color: color,
+            color: strokeColor,
             weight: 4,
-            opacity: 0.9,
+            opacity: 0.95,
             interactive: false
           });
         }
@@ -437,10 +455,10 @@
 
           return L.circleMarker(latLng, {
             radius: 7,
-            color: color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.85,
+            color: strokeColor,
+            weight: 3,
+            fillColor: fillColor,
+            fillOpacity: 0.9,
             interactive: false
           });
         }
@@ -469,7 +487,7 @@
 
     function createQueryUrl() {
       const params = new URLSearchParams({
-        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE,
+        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE + " AND " + STATUS_FIELD + " <> 0",
         outFields: "*",
         returnGeometry: "true",
         f: "json"
@@ -581,6 +599,10 @@
           applyFilter();
         });
 
+        const statusDot = document.createElement("span");
+        statusDot.className = "legend-dot";
+        statusDot.style.background = getStatusFillColor(key);
+
         const text = document.createElement("span");
         text.textContent = getStatusText(key === "__EMPTY__" ? null : key);
 
@@ -589,6 +611,7 @@
         count.textContent = counts[key];
 
         label.appendChild(input);
+        label.appendChild(statusDot);
         label.appendChild(text);
         label.appendChild(count);
 
@@ -751,7 +774,7 @@
                 <div class="overlap-select-item" data-index="${index}">
                   <b>Objektas #${item.objectId}</b><br/>
                   <span>
-                    <span class="legend-dot" style="background:${getCompanyColor(item.companyCode)};"></span>
+                    <span class="legend-dot" style="background:${getCompanyStrokeColor(item.companyCode)};"></span>
                     ${item.companyText}
                   </span><br/>
                   <small>${item.statusText} · ${item.geometryTypeText}</small>
@@ -861,7 +884,7 @@
             ? attrs.OBJECTID
             : "(be ID)";
 
-          const companyCode = attrs.Imone;
+          const companyCode = attrs[COMPANY_FIELD];
           const environmentCode = attrs[ENVIRONMENT_FIELD];
 
           const companyText = getCompanyText(companyCode);
@@ -869,7 +892,7 @@
           const statusText = getStatusText(statusValue);
           const geometryTypeText = getGeometryTypeLabel(geom);
 
-          const layer = createLeafletLayer(geom, companyCode);
+          const layer = createLeafletLayer(geom, companyCode, statusValue);
           if (!layer) {
             skippedNoLayer++;
             console.warn("Praleista: nepavyko sukurti Leaflet sluoksnio", {
@@ -894,11 +917,14 @@
           row.innerHTML = `
             <div class="row-title">Objektas #${objectId}</div>
             <div class="row-sub">
-              <span class="legend-dot" style="background:${getCompanyColor(companyCode)};"></span>
+              <span class="legend-dot" style="background:${getCompanyStrokeColor(companyCode)};"></span>
               ${companyText}
             </div>
             <div class="row-env">Aplinka: ${environmentText}</div>
-            <div class="row-status">Statusas: ${statusText}</div>
+            <div class="row-status">
+              <span class="legend-dot" style="background:${getStatusFillColor(statusValue)};"></span>
+              Statusas: ${statusText}
+            </div>
             <div class="row-type">${geometryTypeText}</div>
           `;
 
