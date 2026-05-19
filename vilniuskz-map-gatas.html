@@ -4,11 +4,7 @@
   <meta charset="UTF-8" />
   <title>Gatas objektų žemėlapis</title>
 
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-  />
-
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.1/dist/proj4.js"></script>
 
   <style>
@@ -30,8 +26,8 @@
     }
 
     #sidebar {
-      flex: 0 0 220px;
-      max-width: 220px;
+      flex: 0 0 260px;
+      max-width: 260px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
@@ -44,7 +40,6 @@
       border-bottom: 1px solid #ddd;
       background: #f7f7f7;
       font-weight: 600;
-      font-size: 12px;
       text-align: center;
     }
 
@@ -58,10 +53,97 @@
       width: 100%;
     }
 
+    #status-filter-wrap {
+      border-bottom: 1px solid #ddd;
+      background: #fafafa;
+      padding: 8px;
+    }
+
+    #status-filter-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    #status-filter-toggle {
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 3px;
+      width: 22px;
+      height: 20px;
+      line-height: 16px;
+      padding: 0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #status-filter-toggle:hover {
+      background: #f0f8ff;
+    }
+
+    #status-filter-wrap.collapsed {
+      padding-bottom: 4px;
+    }
+
+    #status-filter-wrap.collapsed #status-filter-list {
+      display: none;
+    }
+
+    #status-filter-wrap.collapsed #status-filter-title {
+      margin-bottom: 0;
+    }
+
+    #status-filter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .status-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .status-filter-row input {
+      margin: 0;
+    }
+
+    .status-filter-count {
+      color: #777;
+      font-size: 11px;
+      margin-left: auto;
+    }
+
+    .status-filter-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status-filter-actions button {
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 3px;
+      padding: 3px 6px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .status-filter-actions button:hover {
+      background: #f0f8ff;
+    }
+
     #list {
       flex: 1;
       overflow-y: auto;
-      font-size: 12px;
     }
 
     .feature-row {
@@ -81,7 +163,6 @@
     .row-title {
       font-weight: 600;
       margin-bottom: 2px;
-      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -89,6 +170,7 @@
 
     .row-sub,
     .row-env,
+    .row-status,
     .row-type {
       color: #555;
       font-size: 11px;
@@ -105,6 +187,12 @@
       border-radius: 50%;
       margin-right: 6px;
       vertical-align: middle;
+      box-sizing: border-box;
+    }
+
+    .company-dot {
+      border: 2px solid currentColor;
+      background: transparent;
     }
 
     #status-bar {
@@ -118,6 +206,16 @@
       word-break: break-word;
     }
 
+    .overlap-select-item {
+      padding: 6px 4px;
+      cursor: pointer;
+      border-top: 1px solid #eee;
+    }
+
+    .overlap-select-item:hover {
+      background: #f0f8ff;
+    }
+
     @media (max-width: 600px) {
       #sidebar {
         display: none;
@@ -125,13 +223,28 @@
     }
   </style>
 </head>
+
 <body>
   <div id="app">
     <div id="map"></div>
 
     <div id="sidebar">
       <div id="sidebar-header">Gatas objektai</div>
-      <input id="filter" type="text" placeholder="Filtruoti pagal ID / aplinką / tipą..." />
+
+      <input
+        id="filter"
+        type="text"
+        placeholder="Filtruoti pagal ID / statusą / tipą..."
+      />
+
+      <div id="status-filter-wrap">
+        <div id="status-filter-title">
+          <span>Filtruoti pagal statusą</span>
+          <button id="status-filter-toggle" type="button" title="Suskleisti filtrus">−</button>
+        </div>
+        <div id="status-filter-list">Kraunama...</div>
+      </div>
+
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
     </div>
@@ -143,9 +256,41 @@
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
 
-    // Tikslinė įmonė
-    const TARGET_COMPANY_CODE = 7;
+    const TARGET_COMPANY_CODE = "7";
     const TARGET_COMPANY_NAME = "Gatas";
+
+    const ENVIRONMENT_FIELD = "Aplinka";
+    const ENVIRONMENT_VALUE = "1";
+
+    const STATUS_FIELD = "Statusas";
+    const COMPANY_FIELD = "Imone";
+
+    const EXCLUDED_STATUS_CODES = ["0"];
+
+    const STATUS_DOMAIN = [
+      { name: "Vykdoma", code: "1" },
+      { name: "Atlikta UVS", code: "4" },
+      { name: "Atšaukta UVS", code: "5" },
+      { name: "Sukurta UVS", code: "6" },
+      { name: "Atšaukta EOP", code: "7" },
+      { name: "Patvirtinta ir uždaryta", code: "2" }
+    ];
+
+    const DEFAULT_VISIBLE_STATUSES = ["1", "4", "5", "6"];
+
+    const statusLookup = STATUS_DOMAIN.reduce(function (acc, item) {
+      acc[String(item.code)] = item.name;
+      return acc;
+    }, {});
+
+    const statusFillColors = {
+      "1": "#f59e0b",
+      "2": "#166534",
+      "4": "#86efac",
+      "5": "#dc2626",
+      "6": "#facc15",
+      "7": "#dc2626"
+    };
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -158,13 +303,8 @@
       7: "Gatas"
     };
 
-    const environmentLookup = {
-      1: "Testinė",
-      2: "Produkcinė"
-    };
-
-    const companyColors = {
-      0: "#808080",
+    const companyStrokeColors = {
+      0: "#6b7280",
       1: "#1f78b4",
       2: "#33a02c",
       3: "#e31a1c",
@@ -174,26 +314,57 @@
       7: "#17a2b8"
     };
 
+    const environmentLookup = {
+      1: "Testinė",
+      2: "Produkcinė"
+    };
+
     proj4.defs(
       "EPSG:3346",
       "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs"
     );
 
+    function normalizeCode(value) {
+      if (value === null || value === undefined || value === "") return "__EMPTY__";
+      return String(value);
+    }
+
     function lksToWgs(x, y) {
-      const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
-      return [lat, lon];
+      const result = proj4("EPSG:3346", "EPSG:4326", [x, y]);
+      return [result[1], result[0]];
+    }
+
+    function isExcludedStatus(statusKey) {
+      return EXCLUDED_STATUS_CODES.includes(String(statusKey));
+    }
+
+    function getStatusText(value) {
+      const key = normalizeCode(value);
+      if (key === "__EMPTY__") return "Nenurodytas statusas";
+      return statusLookup[key] || ("Nežinomas statusas (" + key + ")");
+    }
+
+    function getStatusFillColor(value) {
+      const key = normalizeCode(value);
+      return statusFillColors[key] || "#d1d5db";
     }
 
     function getCompanyText(code) {
-      return companyLookup[code] || ("Įmonės kodas: " + code);
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return "Nenurodyta";
+      return companyLookup[key] || ("Įmonės kodas: " + key);
+    }
+
+    function getCompanyStrokeColor(code) {
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return companyStrokeColors[0];
+      return companyStrokeColors[key] || "#374151";
     }
 
     function getEnvironmentText(code) {
-      return environmentLookup[code] || ("Aplinkos kodas: " + code);
-    }
-
-    function getCompanyColor(code) {
-      return companyColors[code] || "#666666";
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return "Nenurodyta";
+      return environmentLookup[key] || ("Aplinkos kodas: " + key);
     }
 
     function getGeometryTypeLabel(geometry) {
@@ -205,31 +376,39 @@
     }
 
     function polygonToLatLngs(geometry) {
-      if (!geometry || !Array.isArray(geometry.rings) || !geometry.rings.length) {
-        return [];
-      }
+      if (!geometry || !Array.isArray(geometry.rings)) return [];
 
       return geometry.rings
-        .map(ring =>
-          ring
-            .filter(pt => Array.isArray(pt) && pt.length >= 2)
-            .map(([x, y]) => lksToWgs(x, y))
-        )
-        .filter(ring => ring.length);
+        .map(function (ring) {
+          return ring
+            .filter(function (pt) {
+              return Array.isArray(pt) && pt.length >= 2;
+            })
+            .map(function (pt) {
+              return lksToWgs(pt[0], pt[1]);
+            });
+        })
+        .filter(function (ring) {
+          return ring.length;
+        });
     }
 
     function polylineToLatLngs(geometry) {
-      if (!geometry || !Array.isArray(geometry.paths) || !geometry.paths.length) {
-        return [];
-      }
+      if (!geometry || !Array.isArray(geometry.paths)) return [];
 
       return geometry.paths
-        .map(path =>
-          path
-            .filter(pt => Array.isArray(pt) && pt.length >= 2)
-            .map(([x, y]) => lksToWgs(x, y))
-        )
-        .filter(path => path.length);
+        .map(function (path) {
+          return path
+            .filter(function (pt) {
+              return Array.isArray(pt) && pt.length >= 2;
+            })
+            .map(function (pt) {
+              return lksToWgs(pt[0], pt[1]);
+            });
+        })
+        .filter(function (path) {
+          return path.length;
+        });
     }
 
     function pointToLatLng(geometry) {
@@ -244,19 +423,23 @@
       if (!geometry) return null;
 
       try {
-        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+        if (Array.isArray(geometry.rings)) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
+
           const polygon = L.polygon(latLngs);
           const bounds = polygon.getBounds();
+
           return bounds.isValid() ? bounds.getCenter() : null;
         }
 
-        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+        if (Array.isArray(geometry.paths)) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
+
           const polyline = L.polyline(latLngs);
           const bounds = polyline.getBounds();
+
           return bounds.isValid() ? bounds.getCenter() : null;
         }
 
@@ -271,32 +454,36 @@
       return null;
     }
 
-    function createLeafletLayer(geometry, companyCode) {
-      const color = getCompanyColor(companyCode);
+    function createLeafletLayer(geometry, companyCode, statusValue) {
+      const strokeColor = getCompanyStrokeColor(companyCode);
+      const fillColor = getStatusFillColor(statusValue);
 
       if (!geometry) return null;
 
       try {
-        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+        if (Array.isArray(geometry.rings)) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
 
           return L.polygon(latLngs, {
-            color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.28
+            color: strokeColor,
+            weight: 3,
+            opacity: 1,
+            fillColor: fillColor,
+            fillOpacity: 0.45,
+            interactive: false
           });
         }
 
-        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+        if (Array.isArray(geometry.paths)) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
 
           return L.polyline(latLngs, {
-            color,
+            color: strokeColor,
             weight: 4,
-            opacity: 0.9
+            opacity: 0.95,
+            interactive: false
           });
         }
 
@@ -306,10 +493,11 @@
 
           return L.circleMarker(latLng, {
             radius: 7,
-            color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.85
+            color: strokeColor,
+            weight: 3,
+            fillColor: fillColor,
+            fillOpacity: 0.9,
+            interactive: false
           });
         }
       } catch (err) {
@@ -328,54 +516,418 @@
 
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
+    const statusFilterList = document.getElementById("status-filter-list");
+    const statusFilterWrap = document.getElementById("status-filter-wrap");
+    const statusFilterToggle = document.getElementById("status-filter-toggle");
     const statusBar = document.getElementById("status-bar");
 
     let allItems = [];
     let featureLayer = L.featureGroup().addTo(map);
+    let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
 
-    function createQueryUrl() {
-      const params = new URLSearchParams({
-        where: `Imone = ${TARGET_COMPANY_CODE}`,
-        outFields: "*",
-        returnGeometry: "true",
-        f: "json"
+    if (statusFilterToggle && statusFilterWrap) {
+      statusFilterToggle.addEventListener("click", function () {
+        const isCollapsed = statusFilterWrap.classList.toggle("collapsed");
+
+        statusFilterToggle.textContent = isCollapsed ? "+" : "−";
+        statusFilterToggle.title = isCollapsed ? "Išskleisti filtrus" : "Suskleisti filtrus";
+
+        setTimeout(function () {
+          map.invalidateSize();
+        }, 50);
       });
+    }
 
-      const url = arcgisLayerUrl + "/query?" + params.toString();
+    function queryUrl(params) {
+      const url = arcgisLayerUrl.replace(/\/+$/, "") + "/query?" + new URLSearchParams(params).toString();
       console.log("Query URL:", url);
       return url;
     }
 
+    async function fetchQuery(params) {
+      const resp = await fetch(queryUrl(params), {
+        cache: "no-store",
+        mode: "cors"
+      });
+
+      const data = await resp.json();
+
+      if (data.error) {
+        throw new Error(
+          (data.error.message || "ArcGIS query klaida") +
+          (data.error.details && data.error.details.length
+            ? " | " + data.error.details.join(" | ")
+            : "")
+        );
+      }
+
+      return data;
+    }
+
+    async function fetchAllFeatures() {
+      try {
+        const idsData = await fetchQuery({
+          where: "1=1",
+          returnIdsOnly: "true",
+          f: "json"
+        });
+
+        const objectIds = idsData.objectIds || [];
+
+        if (!objectIds.length) return [];
+
+        const features = [];
+        const chunkSize = 150;
+
+        for (let i = 0; i < objectIds.length; i += chunkSize) {
+          const chunk = objectIds.slice(i, i + chunkSize);
+
+          const data = await fetchQuery({
+            objectIds: chunk.join(","),
+            outFields: "*",
+            returnGeometry: "true",
+            f: "json"
+          });
+
+          if (data.features && data.features.length) {
+            features.push.apply(features, data.features);
+          }
+        }
+
+        return features;
+      } catch (e) {
+        console.warn("Nepavyko krauti per objectIds, bandoma paprasta query:", e);
+
+        const data = await fetchQuery({
+          where: "1=1",
+          outFields: "*",
+          returnGeometry: "true",
+          f: "json"
+        });
+
+        return data.features || [];
+      }
+    }
+
     function clearActiveRows() {
-      document
-        .querySelectorAll(".feature-row.active")
-        .forEach(el => el.classList.remove("active"));
+      document.querySelectorAll(".feature-row.active").forEach(function (el) {
+        el.classList.remove("active");
+      });
     }
 
     function renderList(items) {
       listEl.innerHTML = "";
-      items.forEach(item => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomi " + items.length + " objektai";
+
+      items.forEach(function (item) {
+        listEl.appendChild(item.rowEl);
+      });
+
+      statusBar.textContent =
+        "Rodomi " + items.length + " Gatas objektai iš testinės aplinkos";
+    }
+
+    function getVisibleItems() {
+      const q = filterInput.value.trim().toLowerCase();
+
+      return allItems.filter(function (item) {
+        if (!selectedStatuses.has(item.statusKey)) return false;
+        if (!q) return true;
+
+        return (item.searchText || "").toLowerCase().includes(q);
+      });
     }
 
     function applyFilter() {
-      const q = filterInput.value.trim().toLowerCase();
-
       featureLayer.clearLayers();
 
-      if (!q) {
-        allItems.forEach(item => item.layer.addTo(featureLayer));
-        renderList(allItems);
+      const visibleItems = getVisibleItems();
+
+      visibleItems.forEach(function (item) {
+        item.layer.addTo(featureLayer);
+      });
+
+      renderList(visibleItems);
+    }
+
+    function buildStatusFilters() {
+      const counts = {};
+      const keys = [];
+
+      allItems.forEach(function (item) {
+        if (!counts[item.statusKey]) {
+          counts[item.statusKey] = 0;
+          keys.push(item.statusKey);
+        }
+
+        counts[item.statusKey]++;
+      });
+
+      keys.sort(function (a, b) {
+        const orderA = STATUS_DOMAIN.findIndex(function (s) {
+          return String(s.code) === String(a);
+        });
+
+        const orderB = STATUS_DOMAIN.findIndex(function (s) {
+          return String(s.code) === String(b);
+        });
+
+        if (orderA === -1 && orderB === -1) {
+          return String(a).localeCompare(String(b), "lt");
+        }
+
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+
+        return orderA - orderB;
+      });
+
+      if (!keys.length) {
+        statusFilterList.textContent = "Statusų nerasta";
         return;
       }
 
-      const filtered = allItems.filter(item =>
-        (item.searchText || "").toLowerCase().includes(q)
+      statusFilterList.innerHTML = "";
+
+      keys.forEach(function (key) {
+        const label = document.createElement("label");
+        label.className = "status-filter-row";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = key;
+        input.checked = selectedStatuses.has(key);
+
+        input.addEventListener("change", function () {
+          if (input.checked) {
+            selectedStatuses.add(key);
+          } else {
+            selectedStatuses.delete(key);
+          }
+
+          applyFilter();
+        });
+
+        const statusDot = document.createElement("span");
+        statusDot.className = "legend-dot";
+        statusDot.style.background = getStatusFillColor(key);
+
+        const text = document.createElement("span");
+        text.textContent = getStatusText(key);
+
+        const count = document.createElement("span");
+        count.className = "status-filter-count";
+        count.textContent = counts[key];
+
+        label.appendChild(input);
+        label.appendChild(statusDot);
+        label.appendChild(text);
+        label.appendChild(count);
+
+        statusFilterList.appendChild(label);
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "status-filter-actions";
+
+      const defaultBtn = document.createElement("button");
+      defaultBtn.type = "button";
+      defaultBtn.textContent = "Numatytieji";
+      defaultBtn.addEventListener("click", function () {
+        selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.textContent = "Visi";
+      allBtn.addEventListener("click", function () {
+        selectedStatuses = new Set(keys);
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      const noneBtn = document.createElement("button");
+      noneBtn.type = "button";
+      noneBtn.textContent = "Nė vieno";
+      noneBtn.addEventListener("click", function () {
+        selectedStatuses = new Set();
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      actions.appendChild(defaultBtn);
+      actions.appendChild(allBtn);
+      actions.appendChild(noneBtn);
+
+      statusFilterList.appendChild(actions);
+    }
+
+    function pointInPolygon(point, polygonPoints) {
+      let inside = false;
+
+      for (let i = 0, j = polygonPoints.length - 1; i < polygonPoints.length; j = i++) {
+        const xi = polygonPoints[i].x;
+        const yi = polygonPoints[i].y;
+        const xj = polygonPoints[j].x;
+        const yj = polygonPoints[j].y;
+
+        const intersect =
+          yi > point.y !== yj > point.y &&
+          point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi;
+
+        if (intersect) inside = !inside;
+      }
+
+      return inside;
+    }
+
+    function distanceToSegment(p, a, b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+
+      if (dx === 0 && dy === 0) return p.distanceTo(a);
+
+      const t = Math.max(
+        0,
+        Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))
       );
 
-      filtered.forEach(item => item.layer.addTo(featureLayer));
-      renderList(filtered);
+      return p.distanceTo(L.point(a.x + t * dx, a.y + t * dy));
     }
+
+    function itemContainsClick(item, latlng) {
+      const geom = item.geometry;
+      if (!geom) return false;
+
+      const clickPoint = map.latLngToLayerPoint(latlng);
+
+      if (Array.isArray(geom.rings)) {
+        const rings = polygonToLatLngs(geom);
+
+        return rings.some(function (ring) {
+          const points = ring.map(function (ll) {
+            return map.latLngToLayerPoint(L.latLng(ll[0], ll[1]));
+          });
+
+          return pointInPolygon(clickPoint, points);
+        });
+      }
+
+      if (Array.isArray(geom.paths)) {
+        const paths = polylineToLatLngs(geom);
+        const tolerance = 8;
+
+        return paths.some(function (path) {
+          const points = path.map(function (ll) {
+            return map.latLngToLayerPoint(L.latLng(ll[0], ll[1]));
+          });
+
+          for (let i = 1; i < points.length; i++) {
+            if (distanceToSegment(clickPoint, points[i - 1], points[i]) <= tolerance) {
+              return true;
+            }
+          }
+
+          return false;
+        });
+      }
+
+      if (typeof geom.x === "number" && typeof geom.y === "number") {
+        const pt = pointToLatLng(geom);
+        if (!pt) return false;
+
+        const markerPoint = map.latLngToLayerPoint(L.latLng(pt[0], pt[1]));
+        return clickPoint.distanceTo(markerPoint) <= 10;
+      }
+
+      return false;
+    }
+
+    function selectItem(item, latlng) {
+      clearActiveRows();
+
+      if (item.rowEl) {
+        item.rowEl.classList.add("active");
+        item.rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      const popupHtml = `
+        <b>${TARGET_COMPANY_NAME} objektas #${item.objectId}</b><br/>
+        Įmonė: ${item.companyText}<br/>
+        Aplinka: ${item.environmentText}<br/>
+        Statusas: ${item.statusText}<br/>
+        Geometrija: ${item.geometryTypeText}
+      `;
+
+      L.popup()
+        .setLatLng(latlng || item.center)
+        .setContent(popupHtml)
+        .openOn(map);
+    }
+
+    function showMultiSelectPopup(items, latlng) {
+      const html = `
+        <div style="min-width:210px">
+          <b>Pasirinkite objektą:</b>
+          ${items.map(function (item, index) {
+            return `
+              <div class="overlap-select-item" data-index="${index}">
+                <b>Objektas #${item.objectId}</b><br/>
+                <span>
+                  <span
+                    class="legend-dot company-dot"
+                    style="color:${getCompanyStrokeColor(item.companyCode)};"
+                  ></span>
+                  ${item.companyText}
+                </span><br/>
+                <span>
+                  <span
+                    class="legend-dot"
+                    style="background:${getStatusFillColor(item.statusValue)};"
+                  ></span>
+                  <small>${item.statusText} · ${item.geometryTypeText}</small>
+                </span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+
+      const popup = L.popup()
+        .setLatLng(latlng)
+        .setContent(html)
+        .openOn(map);
+
+      setTimeout(function () {
+        document.querySelectorAll(".overlap-select-item").forEach(function (el) {
+          el.addEventListener("click", function () {
+            const index = Number(el.getAttribute("data-index"));
+            const item = items[index];
+
+            map.closePopup(popup);
+            selectItem(item, latlng);
+          });
+        });
+      }, 0);
+    }
+
+    map.on("click", function (e) {
+      const visibleItems = getVisibleItems();
+
+      const hits = visibleItems.filter(function (item) {
+        return itemContainsClick(item, e.latlng);
+      });
+
+      if (!hits.length) return;
+
+      if (hits.length === 1) {
+        selectItem(hits[0], e.latlng);
+        return;
+      }
+
+      showMultiSelectPopup(hits, e.latlng);
+    });
 
     async function loadData() {
       try {
@@ -383,47 +935,45 @@
         featureLayer.clearLayers();
         allItems = [];
         listEl.innerHTML = "";
+        statusFilterList.textContent = "Kraunama...";
 
-        const url = createQueryUrl();
+        const features = await fetchAllFeatures();
 
-        const resp = await fetch(url, {
-          cache: "no-store",
-          mode: "cors"
-        });
-
-        const data = await resp.json();
-        console.log("Pilnas query atsakymas:", data);
-
-        if (data.error) {
-          console.error("ArcGIS error:", data.error);
-          statusBar.textContent =
-            "Serverio klaida: " +
-            (data.error.message || "nežinoma") +
-            (data.error.details && data.error.details.length
-              ? " | " + data.error.details.join(" | ")
-              : "");
+        if (!features.length) {
+          statusBar.textContent = "Servisas negrąžino objektų";
+          statusFilterList.textContent = "Statusų nerasta";
           return;
         }
 
-        if (!data.features || !data.features.length) {
-          statusBar.textContent = "Gatas objektų nerasta";
-          return;
-        }
-
+        let skippedCompany = 0;
+        let skippedEnvironment = 0;
+        let skippedExcludedStatus = 0;
         let skippedNoGeometry = 0;
         let skippedNoLayer = 0;
         let skippedNoCenter = 0;
-        let skippedWrongCompany = 0;
         let addedCount = 0;
 
-        data.features.forEach((f, index) => {
+        features.forEach(function (f) {
           const attrs = f.attributes || {};
           const geom = f.geometry;
-          const companyCode = attrs.Imone;
 
-          // Papildoma apsauga, net jei query lygyje filtruojam
-          if (Number(companyCode) !== TARGET_COMPANY_CODE) {
-            skippedWrongCompany++;
+          const companyKey = normalizeCode(attrs[COMPANY_FIELD]);
+          if (companyKey !== TARGET_COMPANY_CODE) {
+            skippedCompany++;
+            return;
+          }
+
+          const environmentKey = normalizeCode(attrs[ENVIRONMENT_FIELD]);
+          if (environmentKey !== ENVIRONMENT_VALUE) {
+            skippedEnvironment++;
+            return;
+          }
+
+          const statusValue = attrs[STATUS_FIELD];
+          const statusKey = normalizeCode(statusValue);
+
+          if (isExcludedStatus(statusKey)) {
+            skippedExcludedStatus++;
             return;
           }
 
@@ -432,14 +982,20 @@
             return;
           }
 
-          const objectId = attrs.OBJECTID ?? "(be ID)";
-          const environmentCode = attrs.Aplinka;
+          const objectId =
+            attrs.OBJECTID !== undefined && attrs.OBJECTID !== null
+              ? attrs.OBJECTID
+              : "(be ID)";
+
+          const companyCode = attrs[COMPANY_FIELD];
+          const environmentCode = attrs[ENVIRONMENT_FIELD];
 
           const companyText = getCompanyText(companyCode);
           const environmentText = getEnvironmentText(environmentCode);
+          const statusText = getStatusText(statusValue);
           const geometryTypeText = getGeometryTypeLabel(geom);
 
-          const layer = createLeafletLayer(geom, companyCode);
+          const layer = createLeafletLayer(geom, companyCode, statusValue);
           if (!layer) {
             skippedNoLayer++;
             return;
@@ -451,31 +1007,54 @@
             return;
           }
 
-          const popupHtml = `
-            <b>Gatas objektas #${objectId}</b><br/>
-            Aplinka: ${environmentText}<br/>
-            Geometrija: ${geometryTypeText}
-          `;
-
-          layer.bindPopup(popupHtml);
-          layer.addTo(featureLayer);
-
           const row = document.createElement("div");
           row.className = "feature-row";
           row.innerHTML = `
             <div class="row-title">Objektas #${objectId}</div>
+
             <div class="row-sub">
-              <span class="legend-dot" style="background:${getCompanyColor(companyCode)};"></span>
+              <span
+                class="legend-dot company-dot"
+                style="color:${getCompanyStrokeColor(companyCode)};"
+              ></span>
               ${companyText}
             </div>
+
             <div class="row-env">Aplinka: ${environmentText}</div>
+
+            <div class="row-status">
+              <span
+                class="legend-dot"
+                style="background:${getStatusFillColor(statusValue)};"
+              ></span>
+              Statusas: ${statusText}
+            </div>
+
             <div class="row-type">${geometryTypeText}</div>
           `;
 
-          row.onclick = () => {
+          const item = {
+            objectId: objectId,
+            companyCode: companyCode,
+            environmentCode: environmentCode,
+            statusValue: statusValue,
+            statusKey: statusKey,
+            companyText: companyText,
+            environmentText: environmentText,
+            statusText: statusText,
+            geometryTypeText: geometryTypeText,
+            geometry: geom,
+            center: center,
+            layer: layer,
+            rowEl: row,
+            searchText: `${objectId} ${companyText} ${environmentText} ${statusText} ${geometryTypeText} ${TARGET_COMPANY_NAME}`
+          };
+
+          row.onclick = function () {
             try {
               if (layer.getBounds && typeof layer.getBounds === "function") {
                 const bounds = layer.getBounds();
+
                 if (bounds && bounds.isValid && bounds.isValid()) {
                   map.fitBounds(bounds.pad(0.2));
                 } else {
@@ -488,56 +1067,44 @@
               map.setView(center, 16);
             }
 
-            layer.openPopup();
-            clearActiveRows();
-            row.classList.add("active");
+            selectItem(item, center);
           };
 
-          layer.on("click", () => {
-            row.scrollIntoView({ behavior: "smooth", block: "center" });
-            clearActiveRows();
-            row.classList.add("active");
-          });
-
-          allItems.push({
-            objectId,
-            companyCode,
-            environmentCode,
-            companyText,
-            environmentText,
-            geometryTypeText,
-            layer,
-            rowEl: row,
-            searchText: `${objectId} ${environmentText} ${geometryTypeText} ${TARGET_COMPANY_NAME}`
-          });
-
+          allItems.push(item);
           addedCount++;
         });
 
         console.log("Suvestinė:", {
-          gautaIsServiso: data.features.length,
+          gautaIsServiso: features.length,
           prideta: addedCount,
-          skippedWrongCompany,
-          skippedNoGeometry,
-          skippedNoLayer,
-          skippedNoCenter
+          skippedCompany: skippedCompany,
+          skippedEnvironment: skippedEnvironment,
+          skippedExcludedStatus: skippedExcludedStatus,
+          skippedNoGeometry: skippedNoGeometry,
+          skippedNoLayer: skippedNoLayer,
+          skippedNoCenter: skippedNoCenter
         });
+
+        buildStatusFilters();
+        applyFilter();
 
         if (featureLayer.getLayers().length) {
           const bounds = featureLayer.getBounds();
+
           if (bounds.isValid()) {
             map.fitBounds(bounds.pad(0.08));
           }
         }
 
-        renderList(allItems);
-
         if (!allItems.length) {
-          statusBar.textContent = "Gatas objektai rasti, bet nepavyko jų nubraižyti";
+          statusBar.textContent =
+            "Servisas grąžino objektus, bet Gatas testinės aplinkos objektų po filtravimo nėra";
         }
       } catch (e) {
         console.error("Bendra klaida loadData():", e);
-        statusBar.textContent = "Klaida įkeliant duomenis";
+
+        statusBar.textContent = "Klaida įkeliant duomenis: " + e.message;
+        statusFilterList.textContent = "Klaida įkeliant statusus";
       }
     }
 
