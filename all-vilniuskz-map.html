@@ -62,6 +62,39 @@
     #status-filter-title {
       font-weight: 600;
       margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    #status-filter-toggle {
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 3px;
+      width: 22px;
+      height: 20px;
+      line-height: 16px;
+      padding: 0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #status-filter-toggle:hover {
+      background: #f0f8ff;
+    }
+
+    #status-filter-wrap.collapsed {
+      padding-bottom: 4px;
+    }
+
+    #status-filter-wrap.collapsed #status-filter-list {
+      display: none;
+    }
+
+    #status-filter-wrap.collapsed #status-filter-title {
+      margin-bottom: 0;
     }
 
     #status-filter-list {
@@ -205,7 +238,10 @@
       />
 
       <div id="status-filter-wrap">
-        <div id="status-filter-title">Filtruoti pagal statusą</div>
+        <div id="status-filter-title">
+          <span>Filtruoti pagal statusą</span>
+          <button id="status-filter-toggle" type="button" title="Suskleisti filtrus">−</button>
+        </div>
         <div id="status-filter-list">Kraunama...</div>
       </div>
 
@@ -478,11 +514,26 @@
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
     const statusFilterList = document.getElementById("status-filter-list");
+    const statusFilterWrap = document.getElementById("status-filter-wrap");
+    const statusFilterToggle = document.getElementById("status-filter-toggle");
     const statusBar = document.getElementById("status-bar");
 
     let allItems = [];
     let featureLayer = L.featureGroup().addTo(map);
     let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
+
+    if (statusFilterToggle && statusFilterWrap) {
+      statusFilterToggle.addEventListener("click", function () {
+        const isCollapsed = statusFilterWrap.classList.toggle("collapsed");
+
+        statusFilterToggle.textContent = isCollapsed ? "+" : "−";
+        statusFilterToggle.title = isCollapsed ? "Išskleisti filtrus" : "Suskleisti filtrus";
+
+        setTimeout(function () {
+          map.invalidateSize();
+        }, 50);
+      });
+    }
 
     function queryUrl(params) {
       const url = arcgisLayerUrl.replace(/\/+$/, "") + "/query?" + new URLSearchParams(params).toString();
@@ -519,7 +570,6 @@
         });
 
         const objectIds = idsData.objectIds || [];
-        const objectIdFieldName = idsData.objectIdFieldName || "OBJECTID";
 
         if (!objectIds.length) return [];
 
