@@ -225,10 +225,10 @@
     const ENVIRONMENT_VALUE = 1;
 
     const STATUS_FIELD = "Statusas";
+    const EXCLUDED_STATUS_CODES = ["0"];
 
     const STATUS_DOMAIN = [
       { name: "Vykdoma", code: "1" },
-      { name: "Sukurta EOP", code: "0" },
       { name: "Atlikta UVS", code: "4" },
       { name: "Atšaukta UVS", code: "5" },
       { name: "Sukurta UVS", code: "6" },
@@ -285,6 +285,10 @@
         return "__EMPTY__";
       }
       return String(value);
+    }
+
+    function isExcludedStatus(statusKey) {
+      return EXCLUDED_STATUS_CODES.includes(String(statusKey));
     }
 
     function getStatusText(value) {
@@ -498,6 +502,7 @@
       const q = filterInput.value.trim().toLowerCase();
 
       return allItems.filter(function (item) {
+        if (isExcludedStatus(item.statusKey)) return false;
         if (!selectedStatuses.has(item.statusKey)) return false;
 
         if (!q) return true;
@@ -523,6 +528,8 @@
       const keys = [];
 
       allItems.forEach(function (item) {
+        if (isExcludedStatus(item.statusKey)) return;
+
         if (!counts[item.statusKey]) {
           counts[item.statusKey] = 0;
           keys.push(item.statusKey);
@@ -829,11 +836,20 @@
         let skippedNoGeometry = 0;
         let skippedNoLayer = 0;
         let skippedNoCenter = 0;
+        let skippedExcludedStatus = 0;
         let addedCount = 0;
 
         data.features.forEach(function (f) {
           const attrs = f.attributes || {};
           const geom = f.geometry;
+
+          const statusValue = attrs[STATUS_FIELD];
+          const statusKey = normalizeStatusValue(statusValue);
+
+          if (isExcludedStatus(statusKey)) {
+            skippedExcludedStatus++;
+            return;
+          }
 
           if (!geom) {
             skippedNoGeometry++;
@@ -847,8 +863,6 @@
 
           const companyCode = attrs.Imone;
           const environmentCode = attrs[ENVIRONMENT_FIELD];
-          const statusValue = attrs[STATUS_FIELD];
-          const statusKey = normalizeStatusValue(statusValue);
 
           const companyText = getCompanyText(companyCode);
           const environmentText = getEnvironmentText(environmentCode);
@@ -932,6 +946,7 @@
         console.log("Suvestinė:", {
           gautaIsServiso: data.features.length,
           prideta: addedCount,
+          skippedExcludedStatus: skippedExcludedStatus,
           skippedNoGeometry: skippedNoGeometry,
           skippedNoLayer: skippedNoLayer,
           skippedNoCenter: skippedNoCenter
@@ -948,7 +963,7 @@
         }
 
         if (!allItems.length) {
-          statusBar.textContent = "Servisas grąžino duomenis, bet nieko nepavyko nubraižyti";
+          statusBar.textContent = "Servisas grąžino duomenis, bet po filtravimo nėra rodomų objektų";
         }
       } catch (e) {
         console.error("Bendra klaida loadData():", e);
