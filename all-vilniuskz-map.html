@@ -30,8 +30,8 @@
     }
 
     #sidebar {
-      flex: 0 0 240px;
-      max-width: 240px;
+      flex: 0 0 260px;
+      max-width: 260px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
@@ -95,6 +95,25 @@
       margin-left: auto;
     }
 
+    .status-filter-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .status-filter-actions button {
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 3px;
+      padding: 3px 6px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .status-filter-actions button:hover {
+      background: #f0f8ff;
+    }
+
     #list {
       flex: 1;
       overflow-y: auto;
@@ -126,8 +145,8 @@
 
     .row-sub,
     .row-env,
-    .row-type,
-    .row-status {
+    .row-status,
+    .row-type {
       color: #555;
       font-size: 11px;
       white-space: nowrap;
@@ -202,29 +221,27 @@
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
 
-    /*
-      Visada krauname tik TESTINĖS aplinkos objektus.
-      Jei ArcGIS lauko pavadinimas keistųsi, keisti čia.
-    */
     const ENVIRONMENT_FIELD = "Aplinka";
     const ENVIRONMENT_VALUE = 1;
 
-    /*
-      Statuso filtravimas.
-      Pagal nutylėjimą įjungti statusai: 1, 4, 5, 6.
-      Jei nori pakeisti statusų pavadinimus, papildyk statusLookup.
-    */
     const STATUS_FIELD = "Statusas";
+
+    const STATUS_DOMAIN = [
+      { name: "Vykdoma", code: "1" },
+      { name: "Sukurta EOP", code: "0" },
+      { name: "Atlikta UVS", code: "4" },
+      { name: "Atšaukta UVS", code: "5" },
+      { name: "Sukurta UVS", code: "6" },
+      { name: "Atšaukta EOP", code: "7" },
+      { name: "Patvirtinta ir uždaryta", code: "2" }
+    ];
+
     const DEFAULT_VISIBLE_STATUSES = ["1", "4", "5", "6"];
 
-    const statusLookup = {
-      1: "Statusas 1",
-      2: "Statusas 2",
-      3: "Statusas 3",
-      4: "Statusas 4",
-      5: "Statusas 5",
-      6: "Statusas 6"
-    };
+    const statusLookup = STATUS_DOMAIN.reduce(function (acc, item) {
+      acc[String(item.code)] = item.name;
+      return acc;
+    }, {});
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -259,8 +276,8 @@
     );
 
     function lksToWgs(x, y) {
-      const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
-      return [lat, lon];
+      const result = proj4("EPSG:3346", "EPSG:4326", [x, y]);
+      return [result[1], result[0]];
     }
 
     function normalizeStatusValue(value) {
@@ -272,8 +289,12 @@
 
     function getStatusText(value) {
       const key = normalizeStatusValue(value);
-      if (key === "__EMPTY__") return "Nenurodytas statusas";
-      return statusLookup[key] || ("Statusas " + key);
+
+      if (key === "__EMPTY__") {
+        return "Nenurodytas statusas";
+      }
+
+      return statusLookup[key] || ("Nežinomas statusas (" + key + ")");
     }
 
     function getCompanyText(code) {
@@ -302,12 +323,18 @@
       }
 
       return geometry.rings
-        .map(ring =>
-          ring
-            .filter(pt => Array.isArray(pt) && pt.length >= 2)
-            .map(([x, y]) => lksToWgs(x, y))
-        )
-        .filter(ring => ring.length);
+        .map(function (ring) {
+          return ring
+            .filter(function (pt) {
+              return Array.isArray(pt) && pt.length >= 2;
+            })
+            .map(function (pt) {
+              return lksToWgs(pt[0], pt[1]);
+            });
+        })
+        .filter(function (ring) {
+          return ring.length;
+        });
     }
 
     function polylineToLatLngs(geometry) {
@@ -316,12 +343,18 @@
       }
 
       return geometry.paths
-        .map(path =>
-          path
-            .filter(pt => Array.isArray(pt) && pt.length >= 2)
-            .map(([x, y]) => lksToWgs(x, y))
-        )
-        .filter(path => path.length);
+        .map(function (path) {
+          return path
+            .filter(function (pt) {
+              return Array.isArray(pt) && pt.length >= 2;
+            })
+            .map(function (pt) {
+              return lksToWgs(pt[0], pt[1]);
+            });
+        })
+        .filter(function (path) {
+          return path.length;
+        });
     }
 
     function pointToLatLng(geometry) {
@@ -374,7 +407,7 @@
           if (!latLngs.length) return null;
 
           return L.polygon(latLngs, {
-            color,
+            color: color,
             weight: 2,
             fillColor: color,
             fillOpacity: 0.28,
@@ -387,7 +420,7 @@
           if (!latLngs.length) return null;
 
           return L.polyline(latLngs, {
-            color,
+            color: color,
             weight: 4,
             opacity: 0.9,
             interactive: false
@@ -400,7 +433,7 @@
 
           return L.circleMarker(latLng, {
             radius: 7,
-            color,
+            color: color,
             weight: 2,
             fillColor: color,
             fillOpacity: 0.85,
@@ -446,12 +479,17 @@
     function clearActiveRows() {
       document
         .querySelectorAll(".feature-row.active")
-        .forEach(el => el.classList.remove("active"));
+        .forEach(function (el) {
+          el.classList.remove("active");
+        });
     }
 
     function renderList(items) {
       listEl.innerHTML = "";
-      items.forEach(item => listEl.appendChild(item.rowEl));
+      items.forEach(function (item) {
+        listEl.appendChild(item.rowEl);
+      });
+
       statusBar.textContent =
         "Rodomi " + items.length + " objektai iš testinės aplinkos";
     }
@@ -459,7 +497,7 @@
     function getVisibleItems() {
       const q = filterInput.value.trim().toLowerCase();
 
-      return allItems.filter(item => {
+      return allItems.filter(function (item) {
         if (!selectedStatuses.has(item.statusKey)) return false;
 
         if (!q) return true;
@@ -473,7 +511,10 @@
 
       const visibleItems = getVisibleItems();
 
-      visibleItems.forEach(item => item.layer.addTo(featureLayer));
+      visibleItems.forEach(function (item) {
+        item.layer.addTo(featureLayer);
+      });
+
       renderList(visibleItems);
     }
 
@@ -481,7 +522,7 @@
       const counts = {};
       const keys = [];
 
-      allItems.forEach(item => {
+      allItems.forEach(function (item) {
         if (!counts[item.statusKey]) {
           counts[item.statusKey] = 0;
           keys.push(item.statusKey);
@@ -489,18 +530,23 @@
         counts[item.statusKey]++;
       });
 
-      keys.sort((a, b) => {
-        if (a === "__EMPTY__") return 1;
-        if (b === "__EMPTY__") return -1;
+      keys.sort(function (a, b) {
+        const orderA = STATUS_DOMAIN.findIndex(function (s) {
+          return String(s.code) === String(a);
+        });
 
-        const na = Number(a);
-        const nb = Number(b);
+        const orderB = STATUS_DOMAIN.findIndex(function (s) {
+          return String(s.code) === String(b);
+        });
 
-        if (Number.isFinite(na) && Number.isFinite(nb)) {
-          return na - nb;
+        if (orderA === -1 && orderB === -1) {
+          return String(a).localeCompare(String(b), "lt");
         }
 
-        return String(a).localeCompare(String(b), "lt");
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+
+        return orderA - orderB;
       });
 
       if (!keys.length) {
@@ -510,7 +556,7 @@
 
       statusFilterList.innerHTML = "";
 
-      keys.forEach(key => {
+      keys.forEach(function (key) {
         const label = document.createElement("label");
         label.className = "status-filter-row";
 
@@ -541,6 +587,45 @@
 
         statusFilterList.appendChild(label);
       });
+
+      const actions = document.createElement("div");
+      actions.className = "status-filter-actions";
+
+      const defaultBtn = document.createElement("button");
+      defaultBtn.type = "button";
+      defaultBtn.textContent = "Numatytieji";
+
+      defaultBtn.addEventListener("click", function () {
+        selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.textContent = "Visi";
+
+      allBtn.addEventListener("click", function () {
+        selectedStatuses = new Set(keys);
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      const noneBtn = document.createElement("button");
+      noneBtn.type = "button";
+      noneBtn.textContent = "Nė vieno";
+
+      noneBtn.addEventListener("click", function () {
+        selectedStatuses = new Set();
+        buildStatusFilters();
+        applyFilter();
+      });
+
+      actions.appendChild(defaultBtn);
+      actions.appendChild(allBtn);
+      actions.appendChild(noneBtn);
+
+      statusFilterList.appendChild(actions);
     }
 
     function pointInPolygon(point, polygonPoints) {
@@ -651,7 +736,7 @@
 
     function showMultiSelectPopup(items, latlng) {
       const html = `
-        <div style="min-width:200px">
+        <div style="min-width:210px">
           <b>Pasirinkite objektą:</b>
           ${items
             .map(function (item, index) {
@@ -721,7 +806,7 @@
 
         const data = await resp.json();
         console.log("Pilnas query atsakymas:", data);
-        console.log("Features kiekis:", data.features?.length);
+        console.log("Features kiekis:", data.features && data.features.length);
 
         if (data.error) {
           console.error("ArcGIS error:", data.error);
@@ -746,7 +831,7 @@
         let skippedNoCenter = 0;
         let addedCount = 0;
 
-        data.features.forEach((f) => {
+        data.features.forEach(function (f) {
           const attrs = f.attributes || {};
           const geom = f.geometry;
 
@@ -756,7 +841,10 @@
             return;
           }
 
-          const objectId = attrs.OBJECTID ?? "(be ID)";
+          const objectId = attrs.OBJECTID !== undefined && attrs.OBJECTID !== null
+            ? attrs.OBJECTID
+            : "(be ID)";
+
           const companyCode = attrs.Imone;
           const environmentCode = attrs[ENVIRONMENT_FIELD];
           const statusValue = attrs[STATUS_FIELD];
@@ -771,7 +859,7 @@
           if (!layer) {
             skippedNoLayer++;
             console.warn("Praleista: nepavyko sukurti Leaflet sluoksnio", {
-              objectId,
+              objectId: objectId,
               geometry: geom
             });
             return;
@@ -781,7 +869,7 @@
           if (!center) {
             skippedNoCenter++;
             console.warn("Praleista: nepavyko apskaičiuoti centro", {
-              objectId,
+              objectId: objectId,
               geometry: geom
             });
             return;
@@ -801,23 +889,23 @@
           `;
 
           const item = {
-            objectId,
-            companyCode,
-            environmentCode,
-            statusValue,
-            statusKey,
-            companyText,
-            environmentText,
-            statusText,
-            geometryTypeText,
+            objectId: objectId,
+            companyCode: companyCode,
+            environmentCode: environmentCode,
+            statusValue: statusValue,
+            statusKey: statusKey,
+            companyText: companyText,
+            environmentText: environmentText,
+            statusText: statusText,
+            geometryTypeText: geometryTypeText,
             geometry: geom,
-            center,
-            layer,
+            center: center,
+            layer: layer,
             rowEl: row,
             searchText: `${objectId} ${companyText} ${environmentText} ${statusText} ${geometryTypeText}`
           };
 
-          row.onclick = () => {
+          row.onclick = function () {
             try {
               if (layer.getBounds && typeof layer.getBounds === "function") {
                 const bounds = layer.getBounds();
@@ -844,9 +932,9 @@
         console.log("Suvestinė:", {
           gautaIsServiso: data.features.length,
           prideta: addedCount,
-          skippedNoGeometry,
-          skippedNoLayer,
-          skippedNoCenter
+          skippedNoGeometry: skippedNoGeometry,
+          skippedNoLayer: skippedNoLayer,
+          skippedNoCenter: skippedNoCenter
         });
 
         buildStatusFilters();
