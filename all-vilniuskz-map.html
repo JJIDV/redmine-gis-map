@@ -99,6 +99,7 @@
       display: flex;
       gap: 6px;
       margin-top: 8px;
+      flex-wrap: wrap;
     }
 
     .status-filter-actions button {
@@ -162,6 +163,12 @@
       border-radius: 50%;
       margin-right: 6px;
       vertical-align: middle;
+      box-sizing: border-box;
+    }
+
+    .company-dot {
+      border: 2px solid currentColor;
+      background: transparent;
     }
 
     #status-bar {
@@ -192,6 +199,7 @@
     }
   </style>
 </head>
+
 <body>
   <div id="app">
     <div id="map"></div>
@@ -227,6 +235,12 @@
     const STATUS_FIELD = "Statusas";
     const COMPANY_FIELD = "Imone";
 
+    /*
+      Statusas = 0 / Sukurta EOP:
+      - nekraunamas į žemėlapį;
+      - nerodomas sąraše;
+      - nerodomas statusų filtro parinktyse.
+    */
     const EXCLUDED_STATUS_CODES = ["0"];
 
     const STATUS_DOMAIN = [
@@ -238,6 +252,13 @@
       { name: "Patvirtinta ir uždaryta", code: "2" }
     ];
 
+    /*
+      Pagal nutylėjimą rodomi:
+      1 - Vykdoma
+      4 - Atlikta UVS
+      5 - Atšaukta UVS
+      6 - Sukurta UVS
+    */
     const DEFAULT_VISIBLE_STATUSES = ["1", "4", "5", "6"];
 
     const statusLookup = STATUS_DOMAIN.reduce(function (acc, item) {
@@ -245,6 +266,9 @@
       return acc;
     }, {});
 
+    /*
+      Poligono / taško užpildo spalva pagal Statusas.
+    */
     const statusFillColors = {
       "1": "#f59e0b", // Vykdoma - oranžinė
       "2": "#166534", // Patvirtinta ir uždaryta - tamsesnė žalia
@@ -265,6 +289,9 @@
       7: "Gatas"
     };
 
+    /*
+      Poligono kraštinės / linijos / taško apvado spalva pagal Imone.
+    */
     const companyStrokeColors = {
       0: "#6b7280", // Nenurodyta
       1: "#1f78b4", // VMSA
@@ -318,6 +345,10 @@
     }
 
     function getCompanyText(code) {
+      if (code === null || code === undefined || code === "") {
+        return "Nenurodyta";
+      }
+
       return companyLookup[code] || ("Įmonės kodas: " + code);
     }
 
@@ -326,6 +357,10 @@
     }
 
     function getCompanyStrokeColor(code) {
+      if (code === null || code === undefined || code === "") {
+        return companyStrokeColors[0];
+      }
+
       return companyStrokeColors[code] || "#374151";
     }
 
@@ -392,16 +427,20 @@
         if (Array.isArray(geometry.rings) && geometry.rings.length) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
+
           const polygon = L.polygon(latLngs);
           const bounds = polygon.getBounds();
+
           return bounds.isValid() ? bounds.getCenter() : null;
         }
 
         if (Array.isArray(geometry.paths) && geometry.paths.length) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
+
           const polyline = L.polyline(latLngs);
           const bounds = polyline.getBounds();
+
           return bounds.isValid() ? bounds.getCenter() : null;
         }
 
@@ -485,9 +524,14 @@
     let featureLayer = L.featureGroup().addTo(map);
     let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
 
+    /*
+      Svarbu:
+      serverio pusėje filtruojame tik Aplinka = 1.
+      Statusas = 0 išmetamas JS pusėje, nes ArcGIS servisas grąžino klaidą su Statusas <> 0.
+    */
     function createQueryUrl() {
       const params = new URLSearchParams({
-        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE + " AND " + STATUS_FIELD + " <> 0",
+        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE,
         outFields: "*",
         returnGeometry: "true",
         f: "json"
@@ -495,6 +539,7 @@
 
       const url = arcgisLayerUrl + "/query?" + params.toString();
       console.log("Query URL:", url);
+
       return url;
     }
 
@@ -508,6 +553,7 @@
 
     function renderList(items) {
       listEl.innerHTML = "";
+
       items.forEach(function (item) {
         listEl.appendChild(item.rowEl);
       });
@@ -552,6 +598,7 @@
           counts[item.statusKey] = 0;
           keys.push(item.statusKey);
         }
+
         counts[item.statusKey]++;
       });
 
@@ -596,6 +643,7 @@
           } else {
             selectedStatuses.delete(key);
           }
+
           applyFilter();
         });
 
@@ -691,6 +739,7 @@
       );
 
       const projected = L.point(a.x + t * dx, a.y + t * dy);
+
       return p.distanceTo(projected);
     }
 
@@ -736,6 +785,7 @@
         if (!pt) return false;
 
         const markerPoint = map.latLngToLayerPoint(L.latLng(pt[0], pt[1]));
+
         return clickPoint.distanceTo(markerPoint) <= 10;
       }
 
@@ -774,10 +824,19 @@
                 <div class="overlap-select-item" data-index="${index}">
                   <b>Objektas #${item.objectId}</b><br/>
                   <span>
-                    <span class="legend-dot" style="background:${getCompanyStrokeColor(item.companyCode)};"></span>
+                    <span
+                      class="legend-dot company-dot"
+                      style="color:${getCompanyStrokeColor(item.companyCode)};"
+                    ></span>
                     ${item.companyText}
                   </span><br/>
-                  <small>${item.statusText} · ${item.geometryTypeText}</small>
+                  <span>
+                    <span
+                      class="legend-dot"
+                      style="background:${getStatusFillColor(item.statusValue)};"
+                    ></span>
+                    <small>${item.statusText} · ${item.geometryTypeText}</small>
+                  </span>
                 </div>
               `;
             })
@@ -795,6 +854,7 @@
           el.addEventListener("click", function () {
             const index = Number(el.getAttribute("data-index"));
             const item = items[index];
+
             map.closePopup(popup);
             selectItem(item, latlng);
           });
@@ -835,24 +895,29 @@
         });
 
         const data = await resp.json();
+
         console.log("Pilnas query atsakymas:", data);
         console.log("Features kiekis:", data.features && data.features.length);
 
         if (data.error) {
           console.error("ArcGIS error:", data.error);
+
           statusBar.textContent =
             "Serverio klaida: " +
             (data.error.message || "nežinoma") +
             (data.error.details && data.error.details.length
               ? " | " + data.error.details.join(" | ")
               : "");
+
           return;
         }
 
         if (!data.features || !data.features.length) {
           console.warn("Servisas negrąžino features");
+
           statusBar.textContent = "Nerasta testinės aplinkos objektų";
           statusFilterList.textContent = "Statusų nerasta";
+
           return;
         }
 
@@ -893,22 +958,28 @@
           const geometryTypeText = getGeometryTypeLabel(geom);
 
           const layer = createLeafletLayer(geom, companyCode, statusValue);
+
           if (!layer) {
             skippedNoLayer++;
+
             console.warn("Praleista: nepavyko sukurti Leaflet sluoksnio", {
               objectId: objectId,
               geometry: geom
             });
+
             return;
           }
 
           const center = getGeometryCenter(geom);
+
           if (!center) {
             skippedNoCenter++;
+
             console.warn("Praleista: nepavyko apskaičiuoti centro", {
               objectId: objectId,
               geometry: geom
             });
+
             return;
           }
 
@@ -916,15 +987,25 @@
           row.className = "feature-row";
           row.innerHTML = `
             <div class="row-title">Objektas #${objectId}</div>
+
             <div class="row-sub">
-              <span class="legend-dot" style="background:${getCompanyStrokeColor(companyCode)};"></span>
+              <span
+                class="legend-dot company-dot"
+                style="color:${getCompanyStrokeColor(companyCode)};"
+              ></span>
               ${companyText}
             </div>
+
             <div class="row-env">Aplinka: ${environmentText}</div>
+
             <div class="row-status">
-              <span class="legend-dot" style="background:${getStatusFillColor(statusValue)};"></span>
+              <span
+                class="legend-dot"
+                style="background:${getStatusFillColor(statusValue)};"
+              ></span>
               Statusas: ${statusText}
             </div>
+
             <div class="row-type">${geometryTypeText}</div>
           `;
 
@@ -949,6 +1030,7 @@
             try {
               if (layer.getBounds && typeof layer.getBounds === "function") {
                 const bounds = layer.getBounds();
+
                 if (bounds && bounds.isValid && bounds.isValid()) {
                   map.fitBounds(bounds.pad(0.2));
                 } else {
@@ -983,16 +1065,19 @@
 
         if (featureLayer.getLayers().length) {
           const bounds = featureLayer.getBounds();
+
           if (bounds.isValid()) {
             map.fitBounds(bounds.pad(0.08));
           }
         }
 
         if (!allItems.length) {
-          statusBar.textContent = "Servisas grąžino duomenis, bet po filtravimo nėra rodomų objektų";
+          statusBar.textContent =
+            "Servisas grąžino duomenis, bet po filtravimo nėra rodomų objektų";
         }
       } catch (e) {
         console.error("Bendra klaida loadData():", e);
+
         statusBar.textContent = "Klaida įkeliant duomenis";
         statusFilterList.textContent = "Klaida įkeliant statusus";
       }
