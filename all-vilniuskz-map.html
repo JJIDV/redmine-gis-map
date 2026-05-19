@@ -4,11 +4,7 @@
   <meta charset="UTF-8" />
   <title>Projektų geometrija pagal įmones</title>
 
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-  />
-
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.1/dist/proj4.js"></script>
 
   <style>
@@ -44,7 +40,6 @@
       border-bottom: 1px solid #ddd;
       background: #f7f7f7;
       font-weight: 600;
-      font-size: 12px;
       text-align: center;
     }
 
@@ -67,7 +62,6 @@
     #status-filter-title {
       font-weight: 600;
       margin-bottom: 6px;
-      font-size: 12px;
     }
 
     #status-filter-list {
@@ -80,7 +74,6 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 12px;
       cursor: pointer;
       user-select: none;
     }
@@ -118,7 +111,6 @@
     #list {
       flex: 1;
       overflow-y: auto;
-      font-size: 12px;
     }
 
     .feature-row {
@@ -138,7 +130,6 @@
     .row-title {
       font-weight: 600;
       margin-bottom: 2px;
-      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -230,17 +221,11 @@
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
 
     const ENVIRONMENT_FIELD = "Aplinka";
-    const ENVIRONMENT_VALUE = 1;
+    const ENVIRONMENT_VALUE = "1";
 
     const STATUS_FIELD = "Statusas";
     const COMPANY_FIELD = "Imone";
 
-    /*
-      Statusas = 0 / Sukurta EOP:
-      - nekraunamas į žemėlapį;
-      - nerodomas sąraše;
-      - nerodomas statusų filtro parinktyse.
-    */
     const EXCLUDED_STATUS_CODES = ["0"];
 
     const STATUS_DOMAIN = [
@@ -252,13 +237,6 @@
       { name: "Patvirtinta ir uždaryta", code: "2" }
     ];
 
-    /*
-      Pagal nutylėjimą rodomi:
-      1 - Vykdoma
-      4 - Atlikta UVS
-      5 - Atšaukta UVS
-      6 - Sukurta UVS
-    */
     const DEFAULT_VISIBLE_STATUSES = ["1", "4", "5", "6"];
 
     const statusLookup = STATUS_DOMAIN.reduce(function (acc, item) {
@@ -266,16 +244,13 @@
       return acc;
     }, {});
 
-    /*
-      Poligono / taško užpildo spalva pagal Statusas.
-    */
     const statusFillColors = {
-      "1": "#f59e0b", // Vykdoma - oranžinė
-      "2": "#166534", // Patvirtinta ir uždaryta - tamsesnė žalia
-      "4": "#86efac", // Atlikta UVS - šviesiai žalia
-      "5": "#dc2626", // Atšaukta UVS - raudona
-      "6": "#facc15", // Sukurta UVS - geltona
-      "7": "#dc2626"  // Atšaukta EOP - raudona
+      "1": "#f59e0b",
+      "2": "#166534",
+      "4": "#86efac",
+      "5": "#dc2626",
+      "6": "#facc15",
+      "7": "#dc2626"
     };
 
     const companyLookup = {
@@ -289,18 +264,15 @@
       7: "Gatas"
     };
 
-    /*
-      Poligono kraštinės / linijos / taško apvado spalva pagal Imone.
-    */
     const companyStrokeColors = {
-      0: "#6b7280", // Nenurodyta
-      1: "#1f78b4", // VMSA
-      2: "#33a02c", // SISP
-      3: "#e31a1c", // VVT
-      4: "#ff7f00", // Grinda
-      5: "#6a3d9a", // Biseris
-      6: "#b15928", // Maniga
-      7: "#17a2b8"  // Gatas
+      0: "#6b7280",
+      1: "#1f78b4",
+      2: "#33a02c",
+      3: "#e31a1c",
+      4: "#ff7f00",
+      5: "#6a3d9a",
+      6: "#b15928",
+      7: "#17a2b8"
     };
 
     const environmentLookup = {
@@ -313,16 +285,14 @@
       "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs"
     );
 
+    function normalizeCode(value) {
+      if (value === null || value === undefined || value === "") return "__EMPTY__";
+      return String(value);
+    }
+
     function lksToWgs(x, y) {
       const result = proj4("EPSG:3346", "EPSG:4326", [x, y]);
       return [result[1], result[0]];
-    }
-
-    function normalizeStatusValue(value) {
-      if (value === null || value === undefined || value === "") {
-        return "__EMPTY__";
-      }
-      return String(value);
     }
 
     function isExcludedStatus(statusKey) {
@@ -330,38 +300,32 @@
     }
 
     function getStatusText(value) {
-      const key = normalizeStatusValue(value);
-
-      if (key === "__EMPTY__") {
-        return "Nenurodytas statusas";
-      }
-
+      const key = normalizeCode(value);
+      if (key === "__EMPTY__") return "Nenurodytas statusas";
       return statusLookup[key] || ("Nežinomas statusas (" + key + ")");
     }
 
-    function getStatusFillColor(statusValue) {
-      const key = normalizeStatusValue(statusValue);
+    function getStatusFillColor(value) {
+      const key = normalizeCode(value);
       return statusFillColors[key] || "#d1d5db";
     }
 
     function getCompanyText(code) {
-      if (code === null || code === undefined || code === "") {
-        return "Nenurodyta";
-      }
-
-      return companyLookup[code] || ("Įmonės kodas: " + code);
-    }
-
-    function getEnvironmentText(code) {
-      return environmentLookup[code] || ("Aplinkos kodas: " + code);
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return "Nenurodyta";
+      return companyLookup[key] || ("Įmonės kodas: " + key);
     }
 
     function getCompanyStrokeColor(code) {
-      if (code === null || code === undefined || code === "") {
-        return companyStrokeColors[0];
-      }
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return companyStrokeColors[0];
+      return companyStrokeColors[key] || "#374151";
+    }
 
-      return companyStrokeColors[code] || "#374151";
+    function getEnvironmentText(code) {
+      const key = normalizeCode(code);
+      if (key === "__EMPTY__") return "Nenurodyta";
+      return environmentLookup[key] || ("Aplinkos kodas: " + key);
     }
 
     function getGeometryTypeLabel(geometry) {
@@ -373,9 +337,7 @@
     }
 
     function polygonToLatLngs(geometry) {
-      if (!geometry || !Array.isArray(geometry.rings) || !geometry.rings.length) {
-        return [];
-      }
+      if (!geometry || !Array.isArray(geometry.rings)) return [];
 
       return geometry.rings
         .map(function (ring) {
@@ -393,9 +355,7 @@
     }
 
     function polylineToLatLngs(geometry) {
-      if (!geometry || !Array.isArray(geometry.paths) || !geometry.paths.length) {
-        return [];
-      }
+      if (!geometry || !Array.isArray(geometry.paths)) return [];
 
       return geometry.paths
         .map(function (path) {
@@ -424,7 +384,7 @@
       if (!geometry) return null;
 
       try {
-        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+        if (Array.isArray(geometry.rings)) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
 
@@ -434,7 +394,7 @@
           return bounds.isValid() ? bounds.getCenter() : null;
         }
 
-        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+        if (Array.isArray(geometry.paths)) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
 
@@ -462,7 +422,7 @@
       if (!geometry) return null;
 
       try {
-        if (Array.isArray(geometry.rings) && geometry.rings.length) {
+        if (Array.isArray(geometry.rings)) {
           const latLngs = polygonToLatLngs(geometry);
           if (!latLngs.length) return null;
 
@@ -476,7 +436,7 @@
           });
         }
 
-        if (Array.isArray(geometry.paths) && geometry.paths.length) {
+        if (Array.isArray(geometry.paths)) {
           const latLngs = polylineToLatLngs(geometry);
           if (!latLngs.length) return null;
 
@@ -524,31 +484,82 @@
     let featureLayer = L.featureGroup().addTo(map);
     let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
 
-    /*
-      Svarbu:
-      serverio pusėje filtruojame tik Aplinka = 1.
-      Statusas = 0 išmetamas JS pusėje, nes ArcGIS servisas grąžino klaidą su Statusas <> 0.
-    */
-    function createQueryUrl() {
-      const params = new URLSearchParams({
-        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE,
-        outFields: "*",
-        returnGeometry: "true",
-        f: "json"
-      });
-
-      const url = arcgisLayerUrl + "/query?" + params.toString();
+    function queryUrl(params) {
+      const url = arcgisLayerUrl.replace(/\/+$/, "") + "/query?" + new URLSearchParams(params).toString();
       console.log("Query URL:", url);
-
       return url;
     }
 
-    function clearActiveRows() {
-      document
-        .querySelectorAll(".feature-row.active")
-        .forEach(function (el) {
-          el.classList.remove("active");
+    async function fetchQuery(params) {
+      const resp = await fetch(queryUrl(params), {
+        cache: "no-store",
+        mode: "cors"
+      });
+
+      const data = await resp.json();
+
+      if (data.error) {
+        throw new Error(
+          (data.error.message || "ArcGIS query klaida") +
+          (data.error.details && data.error.details.length
+            ? " | " + data.error.details.join(" | ")
+            : "")
+        );
+      }
+
+      return data;
+    }
+
+    async function fetchAllFeatures() {
+      try {
+        const idsData = await fetchQuery({
+          where: "1=1",
+          returnIdsOnly: "true",
+          f: "json"
         });
+
+        const objectIds = idsData.objectIds || [];
+        const objectIdFieldName = idsData.objectIdFieldName || "OBJECTID";
+
+        if (!objectIds.length) return [];
+
+        const features = [];
+        const chunkSize = 150;
+
+        for (let i = 0; i < objectIds.length; i += chunkSize) {
+          const chunk = objectIds.slice(i, i + chunkSize);
+
+          const data = await fetchQuery({
+            objectIds: chunk.join(","),
+            outFields: "*",
+            returnGeometry: "true",
+            f: "json"
+          });
+
+          if (data.features && data.features.length) {
+            features.push.apply(features, data.features);
+          }
+        }
+
+        return features;
+      } catch (e) {
+        console.warn("Nepavyko krauti per objectIds, bandoma paprasta query:", e);
+
+        const data = await fetchQuery({
+          where: "1=1",
+          outFields: "*",
+          returnGeometry: "true",
+          f: "json"
+        });
+
+        return data.features || [];
+      }
+    }
+
+    function clearActiveRows() {
+      document.querySelectorAll(".feature-row.active").forEach(function (el) {
+        el.classList.remove("active");
+      });
     }
 
     function renderList(items) {
@@ -566,9 +577,7 @@
       const q = filterInput.value.trim().toLowerCase();
 
       return allItems.filter(function (item) {
-        if (isExcludedStatus(item.statusKey)) return false;
         if (!selectedStatuses.has(item.statusKey)) return false;
-
         if (!q) return true;
 
         return (item.searchText || "").toLowerCase().includes(q);
@@ -592,8 +601,6 @@
       const keys = [];
 
       allItems.forEach(function (item) {
-        if (isExcludedStatus(item.statusKey)) return;
-
         if (!counts[item.statusKey]) {
           counts[item.statusKey] = 0;
           keys.push(item.statusKey);
@@ -652,7 +659,7 @@
         statusDot.style.background = getStatusFillColor(key);
 
         const text = document.createElement("span");
-        text.textContent = getStatusText(key === "__EMPTY__" ? null : key);
+        text.textContent = getStatusText(key);
 
         const count = document.createElement("span");
         count.className = "status-filter-count";
@@ -672,7 +679,6 @@
       const defaultBtn = document.createElement("button");
       defaultBtn.type = "button";
       defaultBtn.textContent = "Numatytieji";
-
       defaultBtn.addEventListener("click", function () {
         selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
         buildStatusFilters();
@@ -682,7 +688,6 @@
       const allBtn = document.createElement("button");
       allBtn.type = "button";
       allBtn.textContent = "Visi";
-
       allBtn.addEventListener("click", function () {
         selectedStatuses = new Set(keys);
         buildStatusFilters();
@@ -692,7 +697,6 @@
       const noneBtn = document.createElement("button");
       noneBtn.type = "button";
       noneBtn.textContent = "Nė vieno";
-
       noneBtn.addEventListener("click", function () {
         selectedStatuses = new Set();
         buildStatusFilters();
@@ -729,18 +733,14 @@
       const dx = b.x - a.x;
       const dy = b.y - a.y;
 
-      if (dx === 0 && dy === 0) {
-        return p.distanceTo(a);
-      }
+      if (dx === 0 && dy === 0) return p.distanceTo(a);
 
       const t = Math.max(
         0,
         Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))
       );
 
-      const projected = L.point(a.x + t * dx, a.y + t * dy);
-
-      return p.distanceTo(projected);
+      return p.distanceTo(L.point(a.x + t * dx, a.y + t * dy));
     }
 
     function itemContainsClick(item, latlng) {
@@ -785,7 +785,6 @@
         if (!pt) return false;
 
         const markerPoint = map.latLngToLayerPoint(L.latLng(pt[0], pt[1]));
-
         return clickPoint.distanceTo(markerPoint) <= 10;
       }
 
@@ -818,29 +817,27 @@
       const html = `
         <div style="min-width:210px">
           <b>Pasirinkite objektą:</b>
-          ${items
-            .map(function (item, index) {
-              return `
-                <div class="overlap-select-item" data-index="${index}">
-                  <b>Objektas #${item.objectId}</b><br/>
-                  <span>
-                    <span
-                      class="legend-dot company-dot"
-                      style="color:${getCompanyStrokeColor(item.companyCode)};"
-                    ></span>
-                    ${item.companyText}
-                  </span><br/>
-                  <span>
-                    <span
-                      class="legend-dot"
-                      style="background:${getStatusFillColor(item.statusValue)};"
-                    ></span>
-                    <small>${item.statusText} · ${item.geometryTypeText}</small>
-                  </span>
-                </div>
-              `;
-            })
-            .join("")}
+          ${items.map(function (item, index) {
+            return `
+              <div class="overlap-select-item" data-index="${index}">
+                <b>Objektas #${item.objectId}</b><br/>
+                <span>
+                  <span
+                    class="legend-dot company-dot"
+                    style="color:${getCompanyStrokeColor(item.companyCode)};"
+                  ></span>
+                  ${item.companyText}
+                </span><br/>
+                <span>
+                  <span
+                    class="legend-dot"
+                    style="background:${getStatusFillColor(item.statusValue)};"
+                  ></span>
+                  <small>${item.statusText} · ${item.geometryTypeText}</small>
+                </span>
+              </div>
+            `;
+          }).join("")}
         </div>
       `;
 
@@ -887,52 +884,35 @@
         listEl.innerHTML = "";
         statusFilterList.textContent = "Kraunama...";
 
-        const url = createQueryUrl();
+        const features = await fetchAllFeatures();
 
-        const resp = await fetch(url, {
-          cache: "no-store",
-          mode: "cors"
-        });
+        console.log("Features kiekis:", features.length);
 
-        const data = await resp.json();
-
-        console.log("Pilnas query atsakymas:", data);
-        console.log("Features kiekis:", data.features && data.features.length);
-
-        if (data.error) {
-          console.error("ArcGIS error:", data.error);
-
-          statusBar.textContent =
-            "Serverio klaida: " +
-            (data.error.message || "nežinoma") +
-            (data.error.details && data.error.details.length
-              ? " | " + data.error.details.join(" | ")
-              : "");
-
-          return;
-        }
-
-        if (!data.features || !data.features.length) {
-          console.warn("Servisas negrąžino features");
-
-          statusBar.textContent = "Nerasta testinės aplinkos objektų";
+        if (!features.length) {
+          statusBar.textContent = "Servisas negrąžino objektų";
           statusFilterList.textContent = "Statusų nerasta";
-
           return;
         }
 
+        let skippedEnvironment = 0;
+        let skippedExcludedStatus = 0;
         let skippedNoGeometry = 0;
         let skippedNoLayer = 0;
         let skippedNoCenter = 0;
-        let skippedExcludedStatus = 0;
         let addedCount = 0;
 
-        data.features.forEach(function (f) {
+        features.forEach(function (f) {
           const attrs = f.attributes || {};
           const geom = f.geometry;
 
+          const environmentKey = normalizeCode(attrs[ENVIRONMENT_FIELD]);
+          if (environmentKey !== ENVIRONMENT_VALUE) {
+            skippedEnvironment++;
+            return;
+          }
+
           const statusValue = attrs[STATUS_FIELD];
-          const statusKey = normalizeStatusValue(statusValue);
+          const statusKey = normalizeCode(statusValue);
 
           if (isExcludedStatus(statusKey)) {
             skippedExcludedStatus++;
@@ -941,13 +921,13 @@
 
           if (!geom) {
             skippedNoGeometry++;
-            console.warn("Praleista: nėra geometrijos", f);
             return;
           }
 
-          const objectId = attrs.OBJECTID !== undefined && attrs.OBJECTID !== null
-            ? attrs.OBJECTID
-            : "(be ID)";
+          const objectId =
+            attrs.OBJECTID !== undefined && attrs.OBJECTID !== null
+              ? attrs.OBJECTID
+              : "(be ID)";
 
           const companyCode = attrs[COMPANY_FIELD];
           const environmentCode = attrs[ENVIRONMENT_FIELD];
@@ -958,28 +938,14 @@
           const geometryTypeText = getGeometryTypeLabel(geom);
 
           const layer = createLeafletLayer(geom, companyCode, statusValue);
-
           if (!layer) {
             skippedNoLayer++;
-
-            console.warn("Praleista: nepavyko sukurti Leaflet sluoksnio", {
-              objectId: objectId,
-              geometry: geom
-            });
-
             return;
           }
 
           const center = getGeometryCenter(geom);
-
           if (!center) {
             skippedNoCenter++;
-
-            console.warn("Praleista: nepavyko apskaičiuoti centro", {
-              objectId: objectId,
-              geometry: geom
-            });
-
             return;
           }
 
@@ -1040,7 +1006,6 @@
                 map.setView(center, 16);
               }
             } catch (err) {
-              console.warn("Nepavyko fitBounds, naudojamas setView", err);
               map.setView(center, 16);
             }
 
@@ -1052,8 +1017,9 @@
         });
 
         console.log("Suvestinė:", {
-          gautaIsServiso: data.features.length,
+          gautaIsServiso: features.length,
           prideta: addedCount,
+          skippedEnvironment: skippedEnvironment,
           skippedExcludedStatus: skippedExcludedStatus,
           skippedNoGeometry: skippedNoGeometry,
           skippedNoLayer: skippedNoLayer,
@@ -1073,12 +1039,12 @@
 
         if (!allItems.length) {
           statusBar.textContent =
-            "Servisas grąžino duomenis, bet po filtravimo nėra rodomų objektų";
+            "Servisas grąžino objektus, bet po filtravimo nėra rodomų objektų";
         }
       } catch (e) {
         console.error("Bendra klaida loadData():", e);
 
-        statusBar.textContent = "Klaida įkeliant duomenis";
+        statusBar.textContent = "Klaida įkeliant duomenis: " + e.message;
         statusFilterList.textContent = "Klaida įkeliant statusus";
       }
     }
