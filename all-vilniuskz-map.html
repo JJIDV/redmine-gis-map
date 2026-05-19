@@ -30,8 +30,8 @@
     }
 
     #sidebar {
-      flex: 0 0 220px;
-      max-width: 220px;
+      flex: 0 0 240px;
+      max-width: 240px;
       border-left: 1px solid #ccc;
       display: flex;
       flex-direction: column;
@@ -56,6 +56,43 @@
       font-size: 12px;
       box-sizing: border-box;
       width: 100%;
+    }
+
+    #status-filter-wrap {
+      border-bottom: 1px solid #ddd;
+      background: #fafafa;
+      padding: 8px;
+    }
+
+    #status-filter-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    #status-filter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .status-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .status-filter-row input {
+      margin: 0;
+    }
+
+    .status-filter-count {
+      color: #777;
+      font-size: 11px;
+      margin-left: auto;
     }
 
     #list {
@@ -89,7 +126,8 @@
 
     .row-sub,
     .row-env,
-    .row-type {
+    .row-type,
+    .row-status {
       color: #555;
       font-size: 11px;
       white-space: nowrap;
@@ -141,7 +179,18 @@
 
     <div id="sidebar">
       <div id="sidebar-header">Projektai pagal įmones</div>
-      <input id="filter" type="text" placeholder="Filtruoti pagal ID / įmonę / aplinką..." />
+
+      <input
+        id="filter"
+        type="text"
+        placeholder="Filtruoti pagal ID / įmonę / statusą..."
+      />
+
+      <div id="status-filter-wrap">
+        <div id="status-filter-title">Filtruoti pagal statusą</div>
+        <div id="status-filter-list">Kraunama...</div>
+      </div>
+
       <div id="list"></div>
       <div id="status-bar">Kraunama...</div>
     </div>
@@ -152,6 +201,30 @@
   <script>
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
+
+    /*
+      Visada krauname tik TESTINĖS aplinkos objektus.
+      Jei ArcGIS lauko pavadinimas keistųsi, keisti čia.
+    */
+    const ENVIRONMENT_FIELD = "Aplinka";
+    const ENVIRONMENT_VALUE = 1;
+
+    /*
+      Statuso filtravimas.
+      Pagal nutylėjimą įjungti statusai: 1, 4, 5, 6.
+      Jei nori pakeisti statusų pavadinimus, papildyk statusLookup.
+    */
+    const STATUS_FIELD = "Statusas";
+    const DEFAULT_VISIBLE_STATUSES = ["1", "4", "5", "6"];
+
+    const statusLookup = {
+      1: "Statusas 1",
+      2: "Statusas 2",
+      3: "Statusas 3",
+      4: "Statusas 4",
+      5: "Statusas 5",
+      6: "Statusas 6"
+    };
 
     const companyLookup = {
       0: "Nenurodyta",
@@ -188,6 +261,19 @@
     function lksToWgs(x, y) {
       const [lon, lat] = proj4("EPSG:3346", "EPSG:4326", [x, y]);
       return [lat, lon];
+    }
+
+    function normalizeStatusValue(value) {
+      if (value === null || value === undefined || value === "") {
+        return "__EMPTY__";
+      }
+      return String(value);
+    }
+
+    function getStatusText(value) {
+      const key = normalizeStatusValue(value);
+      if (key === "__EMPTY__") return "Nenurodytas statusas";
+      return statusLookup[key] || ("Statusas " + key);
     }
 
     function getCompanyText(code) {
@@ -337,14 +423,16 @@
 
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
+    const statusFilterList = document.getElementById("status-filter-list");
     const statusBar = document.getElementById("status-bar");
 
     let allItems = [];
     let featureLayer = L.featureGroup().addTo(map);
+    let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
 
     function createQueryUrl() {
       const params = new URLSearchParams({
-        where: "1=1",
+        where: ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE,
         outFields: "*",
         returnGeometry: "true",
         f: "json"
@@ -364,22 +452,95 @@
     function renderList(items) {
       listEl.innerHTML = "";
       items.forEach(item => listEl.appendChild(item.rowEl));
-      statusBar.textContent = "Rodomi " + items.length + " objektai";
+      statusBar.textContent =
+        "Rodomi " + items.length + " objektai iš testinės aplinkos";
+    }
+
+    function getVisibleItems() {
+      const q = filterInput.value.trim().toLowerCase();
+
+      return allItems.filter(item => {
+        if (!selectedStatuses.has(item.statusKey)) return false;
+
+        if (!q) return true;
+
+        return (item.searchText || "").toLowerCase().includes(q);
+      });
     }
 
     function applyFilter() {
-      const q = filterInput.value.trim().toLowerCase();
-
       featureLayer.clearLayers();
 
-      const items = q
-        ? allItems.filter(item =>
-            (item.searchText || "").toLowerCase().includes(q)
-          )
-        : allItems;
+      const visibleItems = getVisibleItems();
 
-      items.forEach(item => item.layer.addTo(featureLayer));
-      renderList(items);
+      visibleItems.forEach(item => item.layer.addTo(featureLayer));
+      renderList(visibleItems);
+    }
+
+    function buildStatusFilters() {
+      const counts = {};
+      const keys = [];
+
+      allItems.forEach(item => {
+        if (!counts[item.statusKey]) {
+          counts[item.statusKey] = 0;
+          keys.push(item.statusKey);
+        }
+        counts[item.statusKey]++;
+      });
+
+      keys.sort((a, b) => {
+        if (a === "__EMPTY__") return 1;
+        if (b === "__EMPTY__") return -1;
+
+        const na = Number(a);
+        const nb = Number(b);
+
+        if (Number.isFinite(na) && Number.isFinite(nb)) {
+          return na - nb;
+        }
+
+        return String(a).localeCompare(String(b), "lt");
+      });
+
+      if (!keys.length) {
+        statusFilterList.textContent = "Statusų nerasta";
+        return;
+      }
+
+      statusFilterList.innerHTML = "";
+
+      keys.forEach(key => {
+        const label = document.createElement("label");
+        label.className = "status-filter-row";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = key;
+        input.checked = selectedStatuses.has(key);
+
+        input.addEventListener("change", function () {
+          if (input.checked) {
+            selectedStatuses.add(key);
+          } else {
+            selectedStatuses.delete(key);
+          }
+          applyFilter();
+        });
+
+        const text = document.createElement("span");
+        text.textContent = getStatusText(key === "__EMPTY__" ? null : key);
+
+        const count = document.createElement("span");
+        count.className = "status-filter-count";
+        count.textContent = counts[key];
+
+        label.appendChild(input);
+        label.appendChild(text);
+        label.appendChild(count);
+
+        statusFilterList.appendChild(label);
+      });
     }
 
     function pointInPolygon(point, polygonPoints) {
@@ -478,6 +639,7 @@
         <b>Objektas #${item.objectId}</b><br/>
         Įmonė: ${item.companyText}<br/>
         Aplinka: ${item.environmentText}<br/>
+        Statusas: ${item.statusText}<br/>
         Geometrija: ${item.geometryTypeText}
       `;
 
@@ -489,7 +651,7 @@
 
     function showMultiSelectPopup(items, latlng) {
       const html = `
-        <div style="min-width:190px">
+        <div style="min-width:200px">
           <b>Pasirinkite objektą:</b>
           ${items
             .map(function (item, index) {
@@ -500,7 +662,7 @@
                     <span class="legend-dot" style="background:${getCompanyColor(item.companyCode)};"></span>
                     ${item.companyText}
                   </span><br/>
-                  <small>${item.environmentText} · ${item.geometryTypeText}</small>
+                  <small>${item.statusText} · ${item.geometryTypeText}</small>
                 </div>
               `;
             })
@@ -526,9 +688,7 @@
     }
 
     map.on("click", function (e) {
-      const visibleItems = allItems.filter(function (item) {
-        return featureLayer.hasLayer(item.layer);
-      });
+      const visibleItems = getVisibleItems();
 
       const hits = visibleItems.filter(function (item) {
         return itemContainsClick(item, e.latlng);
@@ -550,6 +710,7 @@
         featureLayer.clearLayers();
         allItems = [];
         listEl.innerHTML = "";
+        statusFilterList.textContent = "Kraunama...";
 
         const url = createQueryUrl();
 
@@ -575,7 +736,8 @@
 
         if (!data.features || !data.features.length) {
           console.warn("Servisas negrąžino features");
-          statusBar.textContent = "Nerasta objektų";
+          statusBar.textContent = "Nerasta testinės aplinkos objektų";
+          statusFilterList.textContent = "Statusų nerasta";
           return;
         }
 
@@ -584,7 +746,7 @@
         let skippedNoCenter = 0;
         let addedCount = 0;
 
-        data.features.forEach((f, index) => {
+        data.features.forEach((f) => {
           const attrs = f.attributes || {};
           const geom = f.geometry;
 
@@ -596,10 +758,13 @@
 
           const objectId = attrs.OBJECTID ?? "(be ID)";
           const companyCode = attrs.Imone;
-          const environmentCode = attrs.Aplinka;
+          const environmentCode = attrs[ENVIRONMENT_FIELD];
+          const statusValue = attrs[STATUS_FIELD];
+          const statusKey = normalizeStatusValue(statusValue);
 
           const companyText = getCompanyText(companyCode);
           const environmentText = getEnvironmentText(environmentCode);
+          const statusText = getStatusText(statusValue);
           const geometryTypeText = getGeometryTypeLabel(geom);
 
           const layer = createLeafletLayer(geom, companyCode);
@@ -622,8 +787,6 @@
             return;
           }
 
-          layer.addTo(featureLayer);
-
           const row = document.createElement("div");
           row.className = "feature-row";
           row.innerHTML = `
@@ -633,6 +796,7 @@
               ${companyText}
             </div>
             <div class="row-env">Aplinka: ${environmentText}</div>
+            <div class="row-status">Statusas: ${statusText}</div>
             <div class="row-type">${geometryTypeText}</div>
           `;
 
@@ -640,14 +804,17 @@
             objectId,
             companyCode,
             environmentCode,
+            statusValue,
+            statusKey,
             companyText,
             environmentText,
+            statusText,
             geometryTypeText,
             geometry: geom,
             center,
             layer,
             rowEl: row,
-            searchText: `${objectId} ${companyText} ${environmentText} ${geometryTypeText}`
+            searchText: `${objectId} ${companyText} ${environmentText} ${statusText} ${geometryTypeText}`
           };
 
           row.onclick = () => {
@@ -682,6 +849,9 @@
           skippedNoCenter
         });
 
+        buildStatusFilters();
+        applyFilter();
+
         if (featureLayer.getLayers().length) {
           const bounds = featureLayer.getBounds();
           if (bounds.isValid()) {
@@ -689,14 +859,13 @@
           }
         }
 
-        renderList(allItems);
-
         if (!allItems.length) {
           statusBar.textContent = "Servisas grąžino duomenis, bet nieko nepavyko nubraižyti";
         }
       } catch (e) {
         console.error("Bendra klaida loadData():", e);
         statusBar.textContent = "Klaida įkeliant duomenis";
+        statusFilterList.textContent = "Klaida įkeliant statusus";
       }
     }
 
