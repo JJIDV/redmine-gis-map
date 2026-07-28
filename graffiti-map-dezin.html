@@ -2,19 +2,68 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Graffiti – UAB „Dezinfekcijos paslaugos“ vykdomi darbai</title>
 
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Tik animacijų ir pozicionavimo stiliai.
+       MarkerCluster.Default.css nekraunamas, nes spiečių išvaizda aprašyta žemiau. -->
   <link
     rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+    href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
   />
 
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.1/dist/proj4.js"></script>
+
   <style>
+
+    /* ===== ID Vilnius tokenai ===== */
+    :root {
+      --navy: #021d44;
+      --navy-900: #011430;
+      --royal: #002f77;
+      --sky: #00b7f4;
+      --green: #2aa00c;
+      --silver: #bec7cc;
+      --muted: #67778f;
+      --muted-hi: #9aa5b4;
+      --danger: #ff6b6b;
+
+      --line: rgba(255, 255, 255, 0.10);
+      --line-hi: rgba(255, 255, 255, 0.20);
+      --surface: rgba(255, 255, 255, 0.06);
+      --surface-hi: rgba(255, 255, 255, 0.12);
+
+      --font-ui: "Golos Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+      --panel-w: 304px;
+      --handle-h: 46px;
+
+      /* Fonas po plytelėmis, kad kraunantis nemirgėtų balti tarpai */
+      --map-bg: #f2f2f0;
+    }
+
+    [data-basemap="dark"] {
+      --map-bg: #101418;
+    }
+
+    * { box-sizing: border-box; }
+
     html, body {
       height: 100%;
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      sans-serif;
+      font-family: var(--font-ui);
+      background: var(--navy);
+      -webkit-font-smoothing: antialiased;
     }
 
     #app {
@@ -25,270 +74,1680 @@
 
     #map {
       flex: 1;
+      min-width: 0;
+      background: var(--map-bg);
     }
 
-    #sidebar {
-      flex: 0 0 180px;
-      max-width: 180px;
-      border-left: 1px solid #ccc;
+    /* ===== Panelė ===== */
+    #panel {
+      flex: 0 0 var(--panel-w);
+      max-width: var(--panel-w);
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      font-size: 12px;
+      background: linear-gradient(180deg, #021d44 0%, #011430 100%);
+      color: #fff;
+      border-left: 1px solid var(--line);
     }
 
-    #sidebar-header {
-      padding: 6px 8px;
-      border-bottom: 1px solid #ddd;
-      background: #f7f7f7;
+    /* Įkėlimo eigos bėgis */
+    #rail {
+      height: 2px;
+      flex: 0 0 2px;
+      background: var(--line);
+      overflow: hidden;
+    }
+
+    #rail-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--sky), var(--green));
+      transition: width 0.25s ease, opacity 0.4s ease 0.3s;
+    }
+
+    #rail[data-state="done"] #rail-fill { opacity: 0; }
+    #rail[data-state="error"] #rail-fill { width: 100%; background: var(--danger); opacity: 1; }
+
+    /* ===== Antraštė ===== */
+    #panel-head {
+      flex: 0 0 auto;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #panel-title {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+
+    #panel-title .name {
+      font-size: 14px;
       font-weight: 600;
-      font-size: 12px;
-      text-align: center;
+      letter-spacing: -0.01em;
+    }
+
+    .count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--sky);
+      margin-left: auto;
+    }
+
+    #sheet-handle {
+      display: none;
+      width: 100%;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      height: var(--handle-h);
+      background: none;
+      border: 0;
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    #sheet-grip {
+      width: 26px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--line-hi);
+      flex: 0 0 auto;
+    }
+
+    #sheet-handle:hover #sheet-grip { background: var(--sky); }
+
+    /* ===== Kūnas ===== */
+    #panel-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     #filter {
-      padding: 4px 6px;
-      border: none;
-      border-bottom: 1px solid #ddd;
-      outline: none;
+      flex: 0 0 auto;
+      margin: 12px 14px 4px;
+      padding: 8px 10px;
+      width: calc(100% - 28px);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: #fff;
+      font-family: inherit;
       font-size: 12px;
+      outline: none;
     }
 
-    #list {
-      flex: 1;
+    #filter::placeholder { color: var(--muted); }
+
+    #filter:focus-visible {
+      border-color: var(--sky);
+      box-shadow: 0 0 0 2px rgba(0, 183, 244, 0.28);
+    }
+
+    /* ===== Legenda kaip filtras ===== */
+    #keys-bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px 4px;
+    }
+
+    #keys-bar .label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted-hi);
+    }
+
+    #keys-toggle {
+      margin-left: auto;
+      background: none;
+      border: 0;
+      color: var(--muted-hi);
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+
+    #keys-toggle:hover { color: #fff; background: var(--surface); }
+
+    #keys {
+      /* flex-shrink privalo būti 0, kitaip sąrašas suspaudžia filtrus
+         iki juostelės ir jų nebeįmanoma išskleisti. */
+      flex: 0 0 auto;
+      max-height: 40vh;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 0 14px 8px;
     }
 
-    .feature-row {
-      padding: 4px 6px;
-      border-bottom: 1px solid #eee;
+    #panel.keys-collapsed #keys { display: none; }
+
+    .key-group + .key-group { margin-top: 10px; }
+
+    .key-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 6px 0 6px;
+    }
+
+    .key-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .key-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+
+    .key-actions button {
+      background: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted-hi);
+      font-family: inherit;
+      font-size: 10px;
+      padding: 2px 7px;
       cursor: pointer;
     }
 
-    .feature-row:hover {
-      background: #f0f8ff;
+    .key-actions button:hover {
+      color: #fff;
+      border-color: var(--line-hi);
+      background: var(--surface);
     }
 
-    .feature-row.active {
-      background: #e6f2ff;
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
     }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px 4px 7px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    }
+
+    .pill:hover { background: var(--surface); color: var(--muted-hi); }
+
+    .pill .dot { opacity: 0.45; }
+
+    .pill[aria-pressed="true"] {
+      background: var(--surface-hi);
+      border-color: var(--line-hi);
+      color: #fff;
+    }
+
+    .pill[aria-pressed="true"] .dot { opacity: 1; }
+
+    .pill-count {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    .pill[aria-pressed="true"] .pill-count { color: var(--sky); }
+
+    /* Skrituliai: užpildytas = statusas, kontūrinis = įmonė */
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+
+    .dot.ring {
+      background: transparent;
+      border: 2px solid currentColor;
+    }
+
+    /* ===== Sąrašas ===== */
+    #list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-top: 1px solid var(--line);
+    }
+
+    .feature-row {
+      position: relative;
+      padding: 8px 12px 8px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+    }
+
+    .feature-row::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--company-color, var(--muted));
+    }
+
+    .feature-row:hover { background: rgba(0, 183, 244, 0.08); }
+
+    .feature-row.active { background: rgba(0, 183, 244, 0.16); }
+
+    .feature-row.active::before { background: var(--sky); }
+
+    .feature-row:focus-visible {
+      outline: 2px solid var(--sky);
+      outline-offset: -2px;
+    }
+
+    .row-top {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .row-id {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-geom {
+      margin-left: auto;
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .row-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--muted-hi);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #list-empty {
+      padding: 18px 14px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted-hi);
+    }
+
+    #list-empty strong {
+      display: block;
+      color: #fff;
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    /* ===== Slankikliai ===== */
+
+    #list,
+    #keys {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.20) transparent;
+    }
+
+    #list::-webkit-scrollbar,
+    #keys::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    #list::-webkit-scrollbar-track,
+    #keys::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #list::-webkit-scrollbar-thumb,
+    #keys::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      border: 3px solid transparent;
+      background-clip: content-box;
+    }
+
+    #list::-webkit-scrollbar-thumb:hover,
+    #keys::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(0, 183, 244, 0.55);
+    }
+
+    /* Rodyklės slankiklio galuose pašalinamos */
+    #list::-webkit-scrollbar-button,
+    #keys::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    #list::-webkit-scrollbar-corner,
+    #keys::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    /* ===== Poraštė ===== */
+    #status-bar {
+      flex: 0 0 auto;
+      padding: 7px 14px;
+      border-top: 1px solid var(--line);
+      font-size: 10px;
+      line-height: 1.45;
+      color: var(--muted-hi);
+      word-break: break-word;
+    }
+
+    #status-bar .num {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+    }
+
+    #status-bar.is-error {
+      color: var(--danger);
+      background: rgba(255, 107, 107, 0.08);
+    }
+
+    /* ===== Leaflet perdažymas ===== */
+    .leaflet-container {
+      font-family: var(--font-ui);
+      background: var(--map-bg);
+    }
+
+    .leaflet-control-zoom a {
+      background: #fff;
+      color: var(--navy);
+      border-color: var(--silver);
+      font-weight: 600;
+    }
+
+    .leaflet-control-zoom a:hover { background: #f5f5f5; color: var(--royal); }
+
+    .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.86);
+      color: #4a5568;
+      font-size: 10px;
+    }
+
+    .leaflet-control-attribution a { color: var(--royal); }
+
+    [data-basemap="dark"] .leaflet-control-zoom a {
+      background: #1a2230;
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    [data-basemap="dark"] .leaflet-control-zoom a:hover {
+      background: #24303f;
+      color: var(--sky);
+    }
+
+    [data-basemap="dark"] .leaflet-control-attribution {
+      background: rgba(10, 14, 20, 0.78);
+      color: var(--muted-hi);
+    }
+
+    [data-basemap="dark"] .leaflet-control-attribution a { color: var(--sky); }
+
+    .leaflet-popup-content-wrapper {
+      background: var(--navy);
+      color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(1, 20, 48, 0.35);
+    }
+
+    .leaflet-popup-tip { background: var(--navy); }
+
+    .leaflet-popup-content {
+      margin: 11px 13px;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .leaflet-popup-close-button { color: var(--muted-hi) !important; }
+    .leaflet-popup-close-button:hover { color: #fff !important; }
+
+    .pop-id {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .pop-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted-hi);
+    }
+
+    .pop-line b {
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .pop-pick-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted-hi);
+      margin-bottom: 4px;
+    }
+
+    .overlap-select-item {
+      padding: 7px 4px;
+      cursor: pointer;
+      border-top: 1px solid var(--line);
+    }
+
+    .overlap-select-item:hover { background: var(--surface); }
+
+    /* ===== Taškai ir spiečiai ================================== */
+
+    .idv-dot {
+      background: transparent;
+      border: 0;
+    }
+
+    .idv-dot-inner {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+    }
+
+    .idv-cluster {
+      background: transparent;
+      border: 0;
+    }
+
+    .idv-cluster-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      color: #fff;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      /* Balta aureolė atskiria spiečių nuo šviesaus pagrindo.
+         Tai valdiklio, o ne duomenų taško elementas. */
+      box-shadow:
+        0 0 0 4px rgba(255, 255, 255, 0.6),
+        0 2px 10px rgba(1, 20, 48, 0.28);
+    }
+
+    .idv-cluster-inner.size-s { font-size: 11px; }
+    .idv-cluster-inner.size-m { font-size: 12px; }
+    .idv-cluster-inner.size-l { font-size: 13px; }
+
+    .leaflet-marker-icon.idv-cluster:hover .idv-cluster-inner {
+      box-shadow:
+        0 0 0 4px rgba(0, 183, 244, 0.45),
+        0 2px 10px rgba(1, 20, 48, 0.32);
+    }
+
+    /* ===== Kompaktinis režimas: žemas iframe arba mobilus ===== */
+    @media (max-width: 640px), (max-height: 520px) {
+      #app {
+        display: block;
+        position: relative;
+      }
+
+      #map {
+        position: absolute;
+        inset: 0;
+      }
+
+      #panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1100;
+        flex: none;
+        max-width: none;
+        max-height: 78%;
+        border-left: 0;
+        border-top: 1px solid var(--line-hi);
+        border-radius: 12px 12px 0 0;
+        box-shadow: 0 -10px 30px rgba(1, 20, 48, 0.40);
+      }
+
+      #rail { border-radius: 12px 12px 0 0; }
+
+      #panel-head { border-bottom: 0; }
+      #panel-title { display: none; }
+      #sheet-handle { display: flex; }
+
+      #panel-body { display: none; }
+      #panel.open #panel-body { display: flex; }
+      #panel.open #panel-head { border-bottom: 1px solid var(--line); }
+
+      #panel:not(.open) #status-bar { display: none; }
+
+      #keys { max-height: 32vh; }
+
+      .leaflet-bottom.leaflet-right { bottom: calc(var(--handle-h) + 4px); }
+    }
+
+    /* ===== Platus ir žemas langas ==============================
+       Kai aukštis yra 300 px arba mažiau, o plotis didesnis negu 1200 px,
+       apatinis lapas būtų aukštesnis už patį žemėlapį, todėl panėlė
+       grąžinama į dešinį šoną.
+
+       Blokas eina PO kompaktinio režimo, todėl esant vienodam
+       specifiškumui laimi šios taisyklės.
+       ========================================================= */
+    @media (min-width: 1201px) and (max-height: 300px) {
+      #app {
+        display: flex;
+        position: static;
+      }
+
+      #map {
+        position: static;
+        inset: auto;
+        flex: 1;
+        min-width: 0;
+      }
+
+      #panel {
+        /* Esant tokiam pločiui panėlė gali būti kiek platesnė,
+           kad adresai ir rangovų pavadinimai netilptų į vieną eilutę rečiau. */
+        --panel-w: 330px;
+
+        position: static;
+        flex: 0 0 var(--panel-w);
+        max-width: var(--panel-w);
+        max-height: none;
+        z-index: auto;
+        border-left: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      #rail { border-radius: 0; }
+
+      #panel-head { border-bottom: 1px solid var(--line); }
+      #panel-title { display: flex; padding: 9px 14px; }
+      #sheet-handle { display: none; }
+
+      #panel-body { display: flex; }
+      #panel:not(.open) #status-bar { display: block; }
+
+      #filter { margin: 9px 14px 4px; }
+      #keys-bar { padding: 6px 14px 4px; }
+
+      /* Prie 300 px aukščio filtrams paliekama mažiau vietos,
+         kad sąrašui liektų bent kelios eilutės. */
+      #keys { max-height: 34vh; }
+
+      .leaflet-bottom.leaflet-right { bottom: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+
+    /* ===== Grafičių sąrašo eilutės ========================================= */
 
     .row-title {
-      font-weight: 600;
-      margin-bottom: 1px;
       font-size: 12px;
+      font-weight: 600;
+      color: #fff;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .row-sub {
-      color: #555;
-      font-size: 11px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      min-width: 0;
     }
 
     .row-coords {
-      color: #777;
+      font-family: var(--font-mono);
       font-size: 10px;
-      margin-top: 1px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      margin-top: 3px;
       white-space: nowrap;
+    }
+
+    #status-bar .sep {
+      color: var(--muted);
+      padding: 0 2px;
+    }
+
+    /* ===== Vieno rangovo antraštė ir eilutės ================== */
+
+    #panel-title { align-items: center; }
+
+    #panel-title .name {
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    #status-bar {
-      padding: 3px 6px;
-      border-top: 1px solid #ddd;
-      font-size: 10px;
-      color: #555;
-      background: #fafafa;
-      text-align: center;
-    }
-
-    @media (max-width: 600px) {
-      #sidebar { display: none; }
+    /* Tipo skritulys šalia tipo pavadinimo eilutės dešinėje */
+    .row-geom {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
   </style>
 </head>
+
 <body>
-<div id="app">
-  <div id="map"></div>
+  <div id="app">
+    <div id="map"></div>
 
-  <div id="sidebar">
-    <div id="sidebar-header">UAB „Dezinfekcijos paslaugos“ (vykdomi)</div>
-    <input id="filter" type="text" placeholder="Filtruoti..." />
-    <div id="list"></div>
-    <div id="status-bar">Kraunama...</div>
+    <aside id="panel" class="keys-collapsed">
+      <div id="rail"><div id="rail-fill"></div></div>
+
+      <header id="panel-head">
+        <button id="sheet-handle" type="button" aria-expanded="false" aria-controls="panel-body">
+          <span id="sheet-grip"></span>
+          <span id="sheet-label">Objektų sąrašas</span>
+          <span id="count-compact" class="count">–</span>
+        </button>
+
+        <div id="panel-title">
+          <span class="dot ring" id="company-swatch"></span>
+          <span class="name" id="company-name">Dezinfekcijos paslaugos</span>
+          <span id="count-wide" class="count">–</span>
+        </div>
+      </header>
+
+      <div id="panel-body">
+        <input
+          id="filter"
+          type="text"
+          placeholder="Ieškoti pagal adresą ar tipą"
+          aria-label="Ieškoti objektų"
+        />
+
+        <div id="keys-bar">
+          <span class="label">Ką rodyti</span>
+          <button id="keys-toggle" type="button" aria-expanded="false" aria-controls="keys">
+            Rodyti filtrus
+          </button>
+        </div>
+
+        <div id="keys">
+          <div class="key-group" id="type-group"></div>
+        </div>
+
+        <div id="list"></div>
+      </div>
+
+      <footer id="status-bar">Kraunami duomenys</footer>
+    </aside>
   </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-<script>
-  // ===== KONFIGŪRACIJA =====
-  const arcgisLayerUrl =
-    "https://opencity.idvilnius.lt/atviras/rest/services/Miesto_tvark/Grafiti_view_Public/MapServer/0";
+  <script>
+    /* =========================================================
+       BAZINIS ŽEMĖLAPIS
+       Visi variantai nemokami, be API rakto, teikiami per CDN.
+       Perjungiama viena eilute: const BASEMAP = BASEMAPS.<vardas>;
+       ========================================================= */
+    const CARTO_ATTRIBUTION =
+      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ' +
+      '© <a href="https://carto.com/attributions">CARTO</a>';
 
-  // Įmonės pavadinimas (šitam faile – UAB „Dezinfekcijos paslaugos“)
-  const COMPANY_NAME = "UAB „Dezinfekcijos paslaugos“";
+    const BASEMAPS = {
+      positron: {
+        tone: "light",
+        url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+      },
+      positronNoLabels: {
+        tone: "light",
+        url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+      },
+      darkMatter: {
+        tone: "dark",
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+      },
+      darkMatterNoLabels: {
+        tone: "dark",
+        url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+      }
+    };
 
-  // Filtras: tik „Vykdoma (Rangovai)“ ir tik konkrečiai įmonei
-  const whereClause =
-    "statusas_name = 'Vykdoma (Rangovai)' AND rangovas = '" + COMPANY_NAME + "'";
+    const BASEMAP = BASEMAPS.positron;
 
-  // ===== LKS -> WGS84 konversija =====
-  function lksToWgs(x, y) {
-    const k0 = 0.9998;
-    const a = 6378137.0;
-    const e2 = 0.00669438002290;
-    const lon0 = 24 * Math.PI / 180;
-    const x0 = 500000;
-    const dx = x - x0;
-    const dy = y;
-    const M = dy / k0;
-    const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
-    const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    /* =========================================================
+       SERVISO IR RANGOVO KONFIGŪRACIJA
+       ========================================================= */
+    const arcgisLayerUrl =
+      "https://opencity.idvilnius.lt/atviras/rest/services/Miesto_tvark/Grafiti_view_Public/MapServer/0";
 
-    let phi1 = mu
-      + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu)
-      + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
-      + (151 * e1 ** 3 / 96) * Math.sin(6 * mu)
-      + (1097 * e1 ** 4 / 512) * Math.sin(8 * mu);
+    /* Tiksli reikšmė, kokia yra lauke rangovas. Naudojama SQL užklausoje,
+       todėl keisti galima tik pagal realias serviso reikšmes. */
+    const COMPANY_NAME = "UAB \u201eDezinfekcijos paslaugos\u201c";
 
-    const sinPhi1 = Math.sin(phi1);
-    const cosPhi1 = Math.cos(phi1);
-    const tanPhi1 = Math.tan(phi1);
-    const N1 = a / Math.sqrt(1 - e2 * sinPhi1 * sinPhi1);
-    const R1 = N1 * (1 - e2) / (1 - e2 * sinPhi1 * sinPhi1);
-    const D = dx / (N1 * k0);
+    /* Trumpesnis tekstas panelės antraštei. SQL nenaudojamas. */
+    const COMPANY_LABEL = "Dezinfekcijos paslaugos";
 
-    const lat =
-      phi1 - (N1 * tanPhi1 / R1) *
-      (D * D / 2 -
-        (5 + 3 * tanPhi1 * tanPhi1 + 10 * e2 * cosPhi1 * cosPhi1 - 4 * e2 * e2 - 9 * e2) * D ** 4 / 24 +
-        (61 + 90 * tanPhi1 * tanPhi1 + 298 * e2 * cosPhi1 * cosPhi1 + 45 * tanPhi1 ** 4 - 252 * e2 - 3 * e2 * e2) * D ** 6 / 720);
+    const STATUS_FILTER = "Vykdoma (Rangovai)";
 
-    const lon =
-      lon0 +
-      (D -
-        (1 + 2 * tanPhi1 * tanPhi1 + e2 * cosPhi1 * cosPhi1) * D ** 3 / 6 +
-        (5 - 2 * e2 + 28 * tanPhi1 * tanPhi1 - 3 * e2 * e2 + 8 * e2 + 24 * tanPhi1 ** 4) * D ** 5 / 120) /
-      cosPhi1;
+    /* Serviso vaizdas vadinasi query_layer_2metai. */
+    const PERIOD_LABEL = "paskutiniai 2 metai";
 
-    return [lat * 180 / Math.PI, lon * 180 / Math.PI];
-  }
+    /* Apostrofas SQL tekste dubliuojamas. Šiuo metu pavadinimuose jo nėra,
+       bet be šios apsaugos vienas apostrofas nulaužtų visą užklausą. */
+    function sqlText(value) {
+      return String(value).replace(/'/g, "''");
+    }
 
-  // ===== ŽEMĖLAPIS =====
-  const map = L.map("map").setView([54.69, 25.28], 12);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "© OpenStreetMap"
-  }).addTo(map);
+    const statusCondition = "statusas_name = '" + sqlText(STATUS_FILTER) + "'";
+    const companyCondition = "rangovas = '" + sqlText(COMPANY_NAME) + "'";
+    const whereClause = statusCondition + " AND " + companyCondition;
 
-  const listEl = document.getElementById("list");
-  const filterInput = document.getElementById("filter");
-  const statusBar = document.getElementById("status-bar");
-  let allItems = [];
+    const outFieldsList =
+      "OBJECTID,tvark_tipas_name,statusas_name,adresas,rangovas,X_koord,Y_koord";
 
-  function createQueryUrl() {
-    const params = new URLSearchParams({
-      where: whereClause,
-      outFields: "OBJECTID,tvark_tipas_name,statusas_name,adresas,rangovas,X_koord,Y_koord",
-      returnGeometry: "false",
-      f: "pjson"
-    });
-    return arcgisLayerUrl + "/query?" + params.toString();
-  }
+    /* Sluoksnio MaxRecordCount = 2000 */
+    const pageSize = 2000;
+    const maxPages = 25;
 
-  function renderList(items) {
-    listEl.innerHTML = "";
-    items.forEach((item) => listEl.appendChild(item.rowEl));
-    statusBar.textContent = "Rodomi " + items.length + " objektai";
-  }
+    /* Serviso Spatial Reference yra 3346 (LKS94, metrai). */
+    const KOORD_WKID = 3346;
 
-  function applyFilter() {
-    const q = (filterInput.value || "").trim().toLowerCase();
-    if (!q) return renderList(allItems);
-    const filtered = allItems.filter((it) =>
-      (it.searchText || "").toLowerCase().includes(q)
+    /* =========================================================
+       SPALVOS
+
+       Rangovas šiame žemėlapyje yra vienas, todėl jis rodomas antraštėje
+       kaip kontūrinis skritulys, o taškų užpildas laisvas ir koduoja
+       tvarkymo tipą.
+
+       Norint, kad visi taškai būtų rangovo spalvos, pakeiskite
+       FILL_BY į "rangovas".
+       ========================================================= */
+
+    const FILL_BY = "tipas";
+
+    /* GRAFITI_TVARK_TIP domenas: 1 Dažoma, 2 Valoma */
+    const typeFillColors = {
+      "Da\u017eoma": "#d6336c",
+      "Valoma": "#0ca678"
+    };
+
+    const DEFAULT_TYPE_COLOR = "#bec7cc";
+
+    /* Tos pačios taisyklės kaip bendrame grafičių žemėlapyje, kad rangovo
+       spalva sutaptų visuose žemėlapiuose. */
+    const contractorColorRules = [
+      { match: "varec", color: "#0046aa" },
+      { match: "dezinfek", color: "#e8590c" },
+      { match: "socialin", color: "#40c057" }
+    ];
+
+    const DEFAULT_CONTRACTOR_COLOR = "#6b7280";
+
+    function resolveContractorColor(name) {
+      const lower = String(name).toLowerCase();
+
+      for (let i = 0; i < contractorColorRules.length; i++) {
+        if (lower.indexOf(contractorColorRules[i].match) !== -1) {
+          return contractorColorRules[i].color;
+        }
+      }
+
+      console.warn(
+        '[grafiti] rangovui "' + name + '" n\u0117ra spalvos taisykl\u0117s'
+      );
+
+      return DEFAULT_CONTRACTOR_COLOR;
+    }
+
+    const CONTRACTOR_COLOR = resolveContractorColor(COMPANY_NAME);
+
+    /* Taškų išvaizda. Kontūro nėra.
+       Norėdami jį grąžinti, įrašykite spalvą, pvz. "#ffffff". */
+    const MARKER_SIZE = 12;
+    const MARKER_OPACITY = 0.85;
+    const MARKER_STROKE_COLOR = null;
+
+    /* =========================================================
+       SPIEČIAI
+       ========================================================= */
+
+    const CLUSTER_ENABLED = true;
+
+    /* Apytikslis pradinis miesto mastelis. Nuo jo skaičiuojami žingsniai. */
+    const CLUSTER_BASE_ZOOM = 11;
+
+    /* Po kelių priartinimo žingsnių spiečiai išjungiami visai. */
+    const CLUSTER_ZOOM_STEPS = 4;
+    const CLUSTER_OFF_ZOOM = CLUSTER_BASE_ZOOM + CLUSTER_ZOOM_STEPS;
+
+    /* Grupavimo spindulys pikseliais. Mažėja priartinant. */
+    const CLUSTER_MAX_RADIUS = 80;
+    const CLUSTER_MIN_RADIUS = 28;
+
+    /* Spiečiaus spalva, kai jame yra skirtingo užpildo objektų. */
+    const CLUSTER_MIXED_COLOR = "#021d44";
+
+    /* Mastelis, iki kurio priartinama pasirinkus objektą sąraše. */
+    const FOCUS_ZOOM = 18;
+
+    /* =========================================================
+       PAGALBINĖS FUNKCIJOS
+       ========================================================= */
+
+    proj4.defs(
+      "EPSG:3346",
+      "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs"
     );
-    renderList(filtered);
-  }
 
-  if (filterInput) filterInput.addEventListener("input", applyFilter);
+    function lksToWgs(x, y) {
+      const result = proj4("EPSG:" + KOORD_WKID, "EPSG:4326", [x, y]);
+      return [result[1], result[0]];
+    }
 
-  async function loadData() {
-    try {
-      const resp = await fetch(createQueryUrl());
+    function esc(value) {
+      return String(value === null || value === undefined ? "" : value).replace(
+        /[&<>"']/g,
+        function (ch) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+          }[ch];
+        }
+      );
+    }
+
+    function normalizeText(value) {
+      if (value === null || value === undefined) return "";
+      return String(value).trim();
+    }
+
+    function getTypeText(value) {
+      const text = normalizeText(value);
+      return text || "Nenurodytas tipas";
+    }
+
+    function getTypeColor(value) {
+      const text = normalizeText(value);
+      return typeFillColors[text] || DEFAULT_TYPE_COLOR;
+    }
+
+    function getStatusText(value) {
+      const text = normalizeText(value);
+      return text || "Nenurodytas statusas";
+    }
+
+    function fillColorFor(typeKey) {
+      return FILL_BY === "rangovas" ? CONTRACTOR_COLOR : getTypeColor(typeKey);
+    }
+
+    /* =========================================================
+       ŽEMĖLAPIS
+       ========================================================= */
+
+    document.documentElement.setAttribute("data-basemap", BASEMAP.tone);
+
+    const map = L.map("map", { zoomControl: true }).setView([54.687, 25.28], 11);
+
+    L.tileLayer(BASEMAP.url, {
+      subdomains: "abcd",
+      maxZoom: 20,
+      detectRetina: true,
+      crossOrigin: true,
+      attribution: BASEMAP.attribution
+    }).addTo(map);
+
+    /* ===== DOM ===== */
+    const panelEl = document.getElementById("panel");
+    const listEl = document.getElementById("list");
+    const filterInput = document.getElementById("filter");
+    const typeGroupEl = document.getElementById("type-group");
+    const companySwatch = document.getElementById("company-swatch");
+    const companyNameEl = document.getElementById("company-name");
+    const keysToggle = document.getElementById("keys-toggle");
+    const sheetHandle = document.getElementById("sheet-handle");
+    const sheetLabel = document.getElementById("sheet-label");
+    const statusBar = document.getElementById("status-bar");
+    const countWide = document.getElementById("count-wide");
+    const countCompact = document.getElementById("count-compact");
+    const railEl = document.getElementById("rail");
+    const railFill = document.getElementById("rail-fill");
+
+    /* Rangovas rodomas kaip tapatybė, ne kaip filtras. */
+    companyNameEl.textContent = COMPANY_LABEL;
+    companyNameEl.title = COMPANY_NAME;
+    companySwatch.style.color = CONTRACTOR_COLOR;
+
+    let allItems = [];
+    let selectedTypes = new Set();
+    let typeKeys = [];
+
+    L.DomEvent.disableClickPropagation(panelEl);
+    L.DomEvent.disableScrollPropagation(panelEl);
+
+    function refreshMapSize() {
+      setTimeout(function () {
+        map.invalidateSize();
+      }, 60);
+    }
+
+    /* =========================================================
+       ŽYMEKLIAI IR SPIEČIAI
+       ========================================================= */
+
+    function clusterRadiusForZoom(zoom) {
+      const span = Math.max(CLUSTER_ZOOM_STEPS, 1);
+      const step = Math.min(Math.max(zoom - CLUSTER_BASE_ZOOM, 0), span);
+      const range = CLUSTER_MAX_RADIUS - CLUSTER_MIN_RADIUS;
+
+      return Math.round(CLUSTER_MAX_RADIUS - range * (step / span));
+    }
+
+    function clusterIcon(cluster) {
+      const count = cluster.getChildCount();
+      const children = cluster.getAllChildMarkers();
+
+      let color = null;
+      let mixed = false;
+
+      for (let i = 0; i < children.length; i++) {
+        const childColor = children[i].options.idvColor;
+
+        if (color === null) {
+          color = childColor;
+        } else if (color !== childColor) {
+          mixed = true;
+          break;
+        }
+      }
+
+      const fill = mixed || !color ? CLUSTER_MIXED_COLOR : color;
+
+      let size = 30;
+      let sizeClass = "size-s";
+
+      if (count >= 200) {
+        size = 52;
+        sizeClass = "size-l";
+      } else if (count >= 50) {
+        size = 44;
+        sizeClass = "size-m";
+      } else if (count >= 10) {
+        size = 36;
+        sizeClass = "size-m";
+      }
+
+      return L.divIcon({
+        className: "idv-cluster",
+        html:
+          '<div class="idv-cluster-inner ' + sizeClass +
+          '" style="background:' + fill + '">' + count + "</div>",
+        iconSize: L.point(size, size),
+        iconAnchor: L.point(size / 2, size / 2)
+      });
+    }
+
+    function createMarkerGroup() {
+      if (CLUSTER_ENABLED && typeof L.markerClusterGroup === "function") {
+        return L.markerClusterGroup({
+          maxClusterRadius: clusterRadiusForZoom,
+          disableClusteringAtZoom: CLUSTER_OFF_ZOOM,
+          spiderfyOnMaxZoom: false,
+          showCoverageOnHover: false,
+          zoomToBoundsOnClick: true,
+          chunkedLoading: true,
+          animateAddingMarkers: false,
+          iconCreateFunction: clusterIcon
+        }).addTo(map);
+      }
+
+      if (CLUSTER_ENABLED) {
+        console.warn("[grafiti] Leaflet.markercluster nei\u0161sikrov\u0117, spie\u010diai i\u0161jungti");
+      }
+
+      return L.featureGroup().addTo(map);
+    }
+
+    function dotIcon(color) {
+      const ring = MARKER_STROKE_COLOR
+        ? ";box-shadow:0 0 0 1.5px " + MARKER_STROKE_COLOR
+        : "";
+
+      return L.divIcon({
+        className: "idv-dot",
+        html:
+          '<span class="idv-dot-inner" style="background:' + color +
+          ";opacity:" + MARKER_OPACITY + ring + '"></span>',
+        iconSize: L.point(MARKER_SIZE, MARKER_SIZE),
+        iconAnchor: L.point(MARKER_SIZE / 2, MARKER_SIZE / 2),
+        popupAnchor: L.point(0, -MARKER_SIZE / 2)
+      });
+    }
+
+    let featureLayer = createMarkerGroup();
+
+    /* ===== Eigos bėgis ===== */
+    function setProgress(loaded, total) {
+      railEl.removeAttribute("data-state");
+      const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+      railFill.style.width = pct + "%";
+    }
+
+    function finishProgress(state) {
+      railFill.style.width = "100%";
+      railEl.setAttribute("data-state", state);
+    }
+
+    function setStatus(html, isError) {
+      statusBar.innerHTML = html;
+      statusBar.classList.toggle("is-error", !!isError);
+    }
+
+    function setCounts(shown) {
+      const text = String(shown);
+      countWide.textContent = text;
+      countCompact.textContent = text;
+    }
+
+    /* =========================================================
+       UŽKLAUSOS
+       ========================================================= */
+
+    function queryUrl(params) {
+      const url =
+        arcgisLayerUrl.replace(/\/+$/, "") + "/query?" + new URLSearchParams(params).toString();
+      console.log("Query URL:", url);
+      return url;
+    }
+
+    /* Tikrinamas ir HTTP statusas, ir ArcGIS klaidos objektas. */
+    async function fetchJson(url) {
+      const resp = await fetch(url, { cache: "no-store", mode: "cors" });
+
+      if (!resp.ok) {
+        throw new Error("HTTP " + resp.status + " " + (resp.statusText || ""));
+      }
+
       const data = await resp.json();
 
-      if (!data.features?.length) {
-        statusBar.textContent = "Nerasta objektų";
+      if (data && data.error) {
+        const details = Array.isArray(data.error.details)
+          ? data.error.details.join("; ")
+          : "";
+        throw new Error(
+          "ArcGIS " + data.error.code + ": " + data.error.message +
+          (details ? " (" + details + ")" : "")
+        );
+      }
+
+      return data;
+    }
+
+    async function fetchCountFor(where) {
+      const data = await fetchJson(
+        queryUrl({
+          where: where,
+          returnGeometry: "false",
+          returnCountOnly: "true",
+          f: "json"
+        })
+      );
+
+      return typeof data.count === "number" ? data.count : null;
+    }
+
+    async function fetchDistinct(field) {
+      const data = await fetchJson(
+        queryUrl({
+          where: "1=1",
+          outFields: field,
+          returnDistinctValues: "true",
+          returnGeometry: "false",
+          f: "json"
+        })
+      );
+
+      const features = Array.isArray(data.features) ? data.features : [];
+
+      return features
+        .map(function (f) { return (f.attributes || {})[field]; })
+        .filter(function (v) { return v !== null && v !== undefined && v !== ""; });
+    }
+
+    async function fetchAllFeatures(total) {
+      const collected = [];
+      let offset = 0;
+
+      for (let page = 0; page < maxPages; page++) {
+        const data = await fetchJson(
+          queryUrl({
+            where: whereClause,
+            outFields: outFieldsList,
+            returnGeometry: "false",
+            resultOffset: String(offset),
+            resultRecordCount: String(pageSize),
+            f: "json"
+          })
+        );
+
+        const batch = Array.isArray(data.features) ? data.features : [];
+        collected.push.apply(collected, batch);
+
+        setProgress(collected.length, total || collected.length + pageSize);
+
+        if (!data.exceededTransferLimit || batch.length === 0) break;
+        offset += batch.length;
+      }
+
+      return collected;
+    }
+
+    /* Kai rezultatų nėra, nustatoma, kuri iš dviejų sąlygų neatitinka.
+       Dažniausia priežastis yra rangovo pavadinimo rašyba, nes lyginama
+       tiksliai, įskaitant kabutes ir UAB. */
+    async function showEmptyDiagnostics() {
+      try {
+        const statusCount = await fetchCountFor(statusCondition);
+
+        if (statusCount === 0) {
+          const values = await fetchDistinct("statusas_name");
+          console.warn("statusas_name reik\u0161m\u0117s servise:", values);
+
+          setStatus(
+            "Statuso <b>" + esc(STATUS_FILTER) + "</b> \u012fra\u0161\u0173 servise n\u0117ra." +
+            (values.length ? " Yra: " + esc(values.join(" | ")) : ""),
+            true
+          );
+          return;
+        }
+
+        const values = await fetchDistinct("rangovas");
+        console.warn("rangovas reik\u0161m\u0117s servise:", values);
+
+        setStatus(
+          "Statuso <b>" + esc(STATUS_FILTER) + "</b> \u012fra\u0161\u0173 yra " +
+          '<span class="num">' + statusCount + "</span>, bet rangovo <b>" +
+          esc(COMPANY_NAME) + "</b> tarp j\u0173 n\u0117ra." +
+          (values.length ? " Servise yra: " + esc(values.join(" | ")) : ""),
+          true
+        );
+      } catch (e) {
+        console.error(e);
+        setStatus("Nerasta objekt\u0173. Diagnostika nepavyko: " + esc(e.message), true);
+      }
+    }
+
+    /* =========================================================
+       SĄRAŠAS IR FILTRAI
+       ========================================================= */
+
+    function clearActiveRows() {
+      document.querySelectorAll(".feature-row.active").forEach(function (el) {
+        el.classList.remove("active");
+      });
+    }
+
+    function renderList(items) {
+      listEl.innerHTML = "";
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.id = "list-empty";
+        empty.innerHTML =
+          "<strong>Nieko nerodoma</strong>" +
+          "\u012ejunkite bent vien\u0105 darbo tip\u0105 arba i\u0161valykite paie\u0161kos tekst\u0105.";
+        listEl.appendChild(empty);
         return;
       }
 
-      const markers = [];
+      items.forEach(function (item) {
+        listEl.appendChild(item.rowEl);
+      });
+    }
 
-      data.features.forEach((f) => {
-        const a = f.attributes || {};
-        if (!a.X_koord || !a.Y_koord) return;
+    function getVisibleItems() {
+      const q = filterInput.value.trim().toLowerCase();
 
-        const [lat, lon] = lksToWgs(a.X_koord, a.Y_koord);
+      return allItems.filter(function (item) {
+        if (!selectedTypes.has(item.typeKey)) return false;
+        if (!q) return true;
 
-        const rangovas = a.rangovas || "Nežinomas rangovas";
-        const adresas = a.adresas || "";
-        const statusas = a.statusas_name || "";
-        const tipas = a.tvark_tipas_name || "";
+        return (item.searchText || "").toLowerCase().includes(q);
+      });
+    }
 
-        const popupHtml =
-          `<b>${rangovas}</b><br>${adresas}<br>` +
-          `Statusas: ${statusas}<br>Tipas: ${tipas}<br>` +
-          `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
+    function applyFilter() {
+      featureLayer.clearLayers();
 
-        const marker = L.marker([lat, lon]).addTo(map);
-        marker.bindPopup(popupHtml);
-
-        const row = document.createElement("div");
-        row.className = "feature-row";
-        row.innerHTML = `
-          <div class="row-title">${rangovas}</div>
-          <div class="row-sub">${adresas || statusas}</div>
-          <div class="row-coords">Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}</div>
-        `;
-
-        row.onclick = () => {
-          map.setView([lat, lon], 18);
-          marker.openPopup();
-          document.querySelectorAll(".feature-row.active").forEach((el) => el.classList.remove("active"));
-          row.classList.add("active");
-        };
-
-        marker.on("click", () => {
-          row.scrollIntoView({ behavior: "smooth", block: "center" });
-          document.querySelectorAll(".feature-row.active").forEach((el) => el.classList.remove("active"));
-          row.classList.add("active");
-        });
-
-        const searchText = `${rangovas} ${adresas} ${statusas} ${tipas}`;
-        allItems.push({ marker, rowEl: row, searchText });
-        markers.push(marker);
+      const visibleItems = getVisibleItems();
+      const layers = visibleItems.map(function (item) {
+        return item.layer;
       });
 
-      if (markers.length) {
-        const g = L.featureGroup(markers);
-        map.fitBounds(g.getBounds().pad(0.1));
+      if (typeof featureLayer.addLayers === "function") {
+        featureLayer.addLayers(layers);
+      } else {
+        layers.forEach(function (layer) {
+          featureLayer.addLayer(layer);
+        });
       }
 
-      renderList(allItems);
-    } catch (e) {
-      console.error(e);
-      statusBar.textContent = "Klaida įkeliant duomenis";
-    }
-  }
+      renderList(visibleItems);
+      setCounts(visibleItems.length);
 
-  loadData();
-</script>
+      setStatus(
+        '<span class="num">' + visibleItems.length + "</span> i\u0161 " +
+        '<span class="num">' + allItems.length + "</span> objekt\u0173" +
+        '<span class="sep"> \u00b7 </span>' + esc(STATUS_FILTER) +
+        '<span class="sep"> \u00b7 </span>' + esc(PERIOD_LABEL)
+      );
+
+      sheetLabel.textContent = visibleItems.length ? "Objekt\u0173 s\u0105ra\u0161as" : "Nieko nerodoma";
+    }
+
+    function makePill(swatchClass, color, name, count, isOn, onToggle) {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = "pill";
+      pill.setAttribute("aria-pressed", isOn ? "true" : "false");
+
+      if (swatchClass) {
+        const dot = document.createElement("span");
+        dot.className = "dot " + swatchClass;
+
+        if (swatchClass === "ring") {
+          dot.style.color = color;
+        } else {
+          dot.style.background = color;
+        }
+
+        pill.appendChild(dot);
+      }
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "pill-name";
+      nameEl.textContent = name;
+
+      const countEl = document.createElement("span");
+      countEl.className = "pill-count";
+      countEl.textContent = count;
+
+      pill.appendChild(nameEl);
+      pill.appendChild(countEl);
+
+      pill.addEventListener("click", function () {
+        const next = pill.getAttribute("aria-pressed") !== "true";
+        pill.setAttribute("aria-pressed", next ? "true" : "false");
+        onToggle(next);
+        applyFilter();
+      });
+
+      return pill;
+    }
+
+    function makeGroup(container, title, actions) {
+      container.innerHTML = "";
+
+      const head = document.createElement("div");
+      head.className = "key-head";
+
+      const titleEl = document.createElement("span");
+      titleEl.className = "key-title";
+      titleEl.textContent = title;
+      head.appendChild(titleEl);
+
+      const actionsEl = document.createElement("div");
+      actionsEl.className = "key-actions";
+
+      actions.forEach(function (action) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = action.label;
+        btn.addEventListener("click", action.run);
+        actionsEl.appendChild(btn);
+      });
+
+      head.appendChild(actionsEl);
+      container.appendChild(head);
+
+      const pills = document.createElement("div");
+      pills.className = "pills";
+      container.appendChild(pills);
+
+      return pills;
+    }
+
+    function buildTypeFilters() {
+      const counts = {};
+      const order = [];
+
+      allItems.forEach(function (item) {
+        if (counts[item.typeKey] === undefined) {
+          counts[item.typeKey] = 0;
+          order.push(item.typeKey);
+        }
+        counts[item.typeKey]++;
+      });
+
+      typeKeys = order.slice().sort(function (a, b) {
+        return String(a).localeCompare(String(b), "lt");
+      });
+
+      const pills = makeGroup(typeGroupEl, "Darbo tipas", [
+        {
+          label: "Visi",
+          run: function () {
+            selectedTypes = new Set(typeKeys);
+            buildTypeFilters();
+            applyFilter();
+          }
+        },
+        {
+          label: "N\u0117 vieno",
+          run: function () {
+            selectedTypes = new Set();
+            buildTypeFilters();
+            applyFilter();
+          }
+        }
+      ]);
+
+      if (!typeKeys.length) {
+        const note = document.createElement("div");
+        note.className = "pill-count";
+        note.textContent = "Tip\u0173 nerasta";
+        pills.appendChild(note);
+        return;
+      }
+
+      typeKeys.forEach(function (key) {
+        pills.appendChild(
+          makePill(
+            FILL_BY === "tipas" ? "fill" : null,
+            getTypeColor(key),
+            getTypeText(key),
+            counts[key],
+            selectedTypes.has(key),
+            function (isOn) {
+              if (isOn) {
+                selectedTypes.add(key);
+              } else {
+                selectedTypes.delete(key);
+              }
+            }
+          )
+        );
+      });
+    }
+
+    /* =========================================================
+       PAŽYMĖJIMAS
+       ========================================================= */
+
+    function itemPopupHtml(item) {
+      return (
+        '<div class="pop-id">' + esc(item.adresas || "Adresas nenurodytas") + "</div>" +
+        '<div class="pop-line">' +
+          '<span class="dot fill" style="background:' + esc(item.fillColor) + '"></span>' +
+          "<b>" + esc(item.typeText) + "</b>" +
+        "</div>" +
+        '<div class="pop-line">' + esc(item.statusText) + "</div>" +
+        '<div class="pop-line">' +
+          '<span class="dot ring" style="color:' + esc(CONTRACTOR_COLOR) + '"></span>' +
+          esc(COMPANY_LABEL) +
+        "</div>" +
+        '<div class="pop-line" style="font-family:var(--font-mono);font-size:11px">' +
+          item.lat.toFixed(5) + ", " + item.lon.toFixed(5) +
+        "</div>"
+      );
+    }
+
+    function focusItem(item) {
+      map.setView([item.lat, item.lon], FOCUS_ZOOM);
+
+      /* Atskiras popup, o ne žymeklio popup: pasirinktas objektas gali būti
+         spiečiuje ir tuo momentu dar nebūti pridėtas prie žemėlapio. */
+      L.popup()
+        .setLatLng([item.lat, item.lon])
+        .setContent(itemPopupHtml(item))
+        .openOn(map);
+
+      clearActiveRows();
+      item.rowEl.classList.add("active");
+      item.rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    /* =========================================================
+       PANELĖS VALDYMAS
+       ========================================================= */
+
+    sheetHandle.addEventListener("click", function () {
+      const isOpen = panelEl.classList.toggle("open");
+      sheetHandle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      refreshMapSize();
+    });
+
+    keysToggle.addEventListener("click", function () {
+      const isCollapsed = panelEl.classList.toggle("keys-collapsed");
+      keysToggle.textContent = isCollapsed ? "Rodyti filtrus" : "Sl\u0117pti filtrus";
+      keysToggle.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+      refreshMapSize();
+    });
+
+    filterInput.addEventListener("input", applyFilter);
+
+    /* =========================================================
+       DUOMENŲ ĮKĖLIMAS
+       ========================================================= */
+
+    async function loadData() {
+      try {
+        setStatus("Kraunami duomenys");
+        setCounts("\u2013");
+        setProgress(0, 1);
+
+        featureLayer.clearLayers();
+        allItems = [];
+        listEl.innerHTML = "";
+        typeGroupEl.innerHTML = "";
+
+        const total = await fetchCountFor(whereClause);
+
+        if (total === 0) {
+          finishProgress("error");
+          setCounts(0);
+          renderList([]);
+          await showEmptyDiagnostics();
+          return;
+        }
+
+        const features = await fetchAllFeatures(total);
+
+        console.log("Features kiekis:", features.length, "serviso count:", total);
+
+        if (!features.length) {
+          finishProgress("error");
+          setCounts(0);
+          renderList([]);
+          await showEmptyDiagnostics();
+          return;
+        }
+
+        let skippedNoCoords = 0;
+
+        features.forEach(function (f) {
+          const a = f.attributes || {};
+
+          const x = Number(a.X_koord);
+          const y = Number(a.Y_koord);
+
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            skippedNoCoords++;
+            return;
+          }
+
+          const coords = lksToWgs(x, y);
+          const lat = coords[0];
+          const lon = coords[1];
+
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            skippedNoCoords++;
+            return;
+          }
+
+          const typeText = getTypeText(a.tvark_tipas_name);
+          const fillColor = fillColorFor(typeText);
+
+          const layer = L.marker([lat, lon], {
+            icon: dotIcon(fillColor),
+            idvColor: fillColor,
+            keyboard: false
+          });
+
+          const row = document.createElement("div");
+          row.className = "feature-row";
+          row.tabIndex = 0;
+          row.style.setProperty("--company-color", fillColor);
+          row.innerHTML =
+            '<div class="row-top">' +
+              '<span class="row-title">' +
+                esc(normalizeText(a.adresas) || "Adresas nenurodytas") +
+              "</span>" +
+              '<span class="row-geom">' +
+                '<span class="dot fill" style="background:' + esc(fillColor) + '"></span>' +
+                esc(typeText) +
+              "</span>" +
+            "</div>" +
+            '<div class="row-coords">' + lat.toFixed(5) + ", " + lon.toFixed(5) + "</div>";
+
+          const item = {
+            objectId: a.OBJECTID,
+            adresas: normalizeText(a.adresas),
+            typeText: typeText,
+            typeKey: typeText,
+            statusText: getStatusText(a.statusas_name),
+            fillColor: fillColor,
+            lat: lat,
+            lon: lon,
+            layer: layer,
+            rowEl: row
+          };
+
+          item.searchText =
+            item.adresas + " " + typeText + " " + item.statusText + " " +
+            (item.objectId || "") + " " + COMPANY_LABEL;
+
+          layer.bindPopup(itemPopupHtml(item));
+
+          layer.on("click", function () {
+            clearActiveRows();
+            row.classList.add("active");
+            row.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+
+          row.onclick = function () {
+            focusItem(item);
+          };
+
+          row.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              focusItem(item);
+            }
+          });
+
+          allItems.push(item);
+        });
+
+        console.log("Suvestin\u0117:", {
+          gautaIsServiso: features.length,
+          prideta: allItems.length,
+          skippedNoCoords: skippedNoCoords
+        });
+
+        selectedTypes = new Set(allItems.map(function (item) { return item.typeKey; }));
+
+        buildTypeFilters();
+        applyFilter();
+
+        if (featureLayer.getLayers().length) {
+          const bounds = featureLayer.getBounds();
+
+          if (bounds.isValid()) {
+            map.fitBounds(bounds.pad(0.08));
+          }
+        }
+
+        finishProgress("done");
+
+        if (skippedNoCoords > 0) {
+          console.warn("\u012era\u0161\u0173 be tinkam\u0173 X_koord/Y_koord: " + skippedNoCoords);
+        }
+
+        if (!allItems.length) {
+          setStatus(
+            "Servisas gr\u0105\u017eino <span class=\"num\">" + features.length +
+            "</span> \u012fra\u0161\u0173, bet n\u0117 vienas neturi tinkam\u0173 koordina\u010di\u0173",
+            true
+          );
+        }
+      } catch (e) {
+        console.error("Bendra klaida loadData():", e);
+
+        finishProgress("error");
+        setCounts(0);
+        renderList([]);
+        setStatus("Nepavyko \u012fkelti duomen\u0173. " + esc(e.message), true);
+      }
+    }
+
+    loadData();
+  </script>
 </body>
 </html>
