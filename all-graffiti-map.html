@@ -7,8 +7,8 @@
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
 
-  <!-- Tik animacijų ir pozicionavimo stiliai.
-       MarkerCluster.Default.css nekraunamas, nes spiečių išvaizda aprašyta žemiau. -->
+  <!-- Tik animaciju ir pozicionavimo stiliai.
+       MarkerCluster.Default.css nekraunamas, nes spieciu isvaizda aprasyta zemiau. -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
@@ -48,7 +48,7 @@
       --panel-w: 304px;
       --handle-h: 46px;
 
-      /* Fonas po plytelėmis, kad kraunantis nemirgėtų balti tarpai */
+      /* Fonas po plytelemis, kad kraunantis nemirgetu balti tarpai */
       --map-bg: #f2f2f0;
     }
 
@@ -78,7 +78,7 @@
       background: var(--map-bg);
     }
 
-    /* ===== Panelė ===== */
+    /* ===== Panele ===== */
     #panel {
       flex: 0 0 var(--panel-w);
       max-width: var(--panel-w);
@@ -90,7 +90,7 @@
       border-left: 1px solid var(--line);
     }
 
-    /* Įkėlimo eigos bėgis */
+    /* Ikelimo eigos begis */
     #rail {
       height: 2px;
       flex: 0 0 2px;
@@ -108,7 +108,7 @@
     #rail[data-state="done"] #rail-fill { opacity: 0; }
     #rail[data-state="error"] #rail-fill { width: 100%; background: var(--danger); opacity: 1; }
 
-    /* ===== Antraštė ===== */
+    /* ===== Antraste ===== */
     #panel-head {
       flex: 0 0 auto;
       border-bottom: 1px solid var(--line);
@@ -162,7 +162,7 @@
 
     #sheet-handle:hover #sheet-grip { background: var(--sky); }
 
-    /* ===== Kūnas ===== */
+    /* ===== Kunas ===== */
     #panel-body {
       flex: 1;
       min-height: 0;
@@ -221,8 +221,8 @@
     #keys-toggle:hover { color: #fff; background: var(--surface); }
 
     #keys {
-      /* flex-shrink privalo būti 0, kitaip sąrašas suspaudžia filtrus
-         iki juostelės ir jų nebeįmanoma išskleisti. */
+      /* flex-shrink privalo buti 0, kitaip sarasas suspaudzia filtrus
+         iki juosteles ir ju nebeimanoma isskleisti. */
       flex: 0 0 auto;
       max-height: 40vh;
       overflow-y: auto;
@@ -315,7 +315,7 @@
 
     .pill[aria-pressed="true"] .pill-count { color: var(--sky); }
 
-    /* Skrituliai: užpildytas = statusas, kontūrinis = įmonė */
+    /* Skrituliai: uzpildytas = statusas, konturinis = imone */
     .dot {
       display: inline-block;
       width: 10px;
@@ -329,7 +329,7 @@
       border: 2px solid currentColor;
     }
 
-    /* ===== Sąrašas ===== */
+    /* ===== Sarasas ===== */
     #list {
       flex: 1 1 auto;
       min-height: 0;
@@ -444,7 +444,7 @@
       background-color: rgba(0, 183, 244, 0.55);
     }
 
-    /* Rodyklės slankiklio galuose pašalinamos */
+    /* Rodykles slankiklio galuose pasalinamos */
     #list::-webkit-scrollbar-button,
     #keys::-webkit-scrollbar-button {
       display: none;
@@ -457,7 +457,7 @@
       background: transparent;
     }
 
-    /* ===== Poraštė ===== */
+    /* ===== Poraste ===== */
     #status-bar {
       flex: 0 0 auto;
       padding: 7px 14px;
@@ -479,7 +479,7 @@
       background: rgba(255, 107, 107, 0.08);
     }
 
-    /* ===== Leaflet perdažymas ===== */
+    /* ===== Leaflet perdazymas ===== */
     .leaflet-container {
       font-family: var(--font-ui);
       background: var(--map-bg);
@@ -575,7 +575,52 @@
 
     .overlap-select-item:hover { background: var(--surface); }
 
-    /* ===== Taškai ir spiečiai ================================== */
+    /* ===== Nuoroda i Redmine uzduoti popup viduje =====
+       Selektorius su .leaflet-popup-content, nes Leaflet turi savo
+       .leaflet-container a spalva, kuri kitaip nugaletu. */
+    .leaflet-popup-content .pop-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 9px;
+      padding: 6px 11px;
+      border-radius: 6px;
+      background: rgba(0, 183, 244, 0.14);
+      border: 1px solid rgba(0, 183, 244, 0.38);
+      color: var(--sky);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+
+    .leaflet-popup-content .pop-action:hover,
+    .leaflet-popup-content .pop-action:focus-visible {
+      background: rgba(0, 183, 244, 0.26);
+      border-color: var(--sky);
+      color: #fff;
+      outline: none;
+    }
+
+    .leaflet-popup-content .pop-action svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+
+    .pop-note {
+      margin-top: 8px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ===== Taskai ir spieciai ================================== */
 
     .idv-dot {
       background: transparent;
@@ -606,8 +651,8 @@
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       line-height: 1;
-      /* Balta aureolė atskiria spiečių nuo šviesaus pagrindo.
-         Tai valdiklio, o ne duomenų taško elementas. */
+      /* Balta aureole atskiria spieciu nuo sviesaus pagrindo.
+         Tai valdiklio, o ne duomenu tasko elementas. */
       box-shadow:
         0 0 0 4px rgba(255, 255, 255, 0.6),
         0 2px 10px rgba(1, 20, 48, 0.28);
@@ -623,7 +668,7 @@
         0 2px 10px rgba(1, 20, 48, 0.32);
     }
 
-    /* ===== Kompaktinis režimas: žemas iframe arba mobilus ===== */
+    /* ===== Kompaktinis rezimas: zemas iframe arba mobilus ===== */
     @media (max-width: 640px), (max-height: 520px) {
       #app {
         display: block;
@@ -667,13 +712,13 @@
       .leaflet-bottom.leaflet-right { bottom: calc(var(--handle-h) + 4px); }
     }
 
-    /* ===== Platus ir žemas langas ==============================
-       Kai aukštis yra 300 px arba mažiau, o plotis didesnis negu 1200 px,
-       apatinis lapas būtų aukštesnis už patį žemėlapį, todėl panėlė
-       grąžinama į dešinį šoną.
+    /* ===== Platus ir zemas langas ==============================
+       Kai aukstis yra 300 px arba maziau, o plotis didesnis negu 1200 px,
+       apatinis lapas butu aukstesnis uz pati zemelapi, todel panele
+       grazinama i desini sona.
 
-       Blokas eina PO kompaktinio režimo, todėl esant vienodam
-       specifiškumui laimi šios taisyklės.
+       Blokas eina PO kompaktinio rezimo, todel esant vienodam
+       specifiskumui laimi sios taisykles.
        ========================================================= */
     @media (min-width: 1201px) and (max-height: 300px) {
       #app {
@@ -689,8 +734,8 @@
       }
 
       #panel {
-        /* Esant tokiam pločiui panėlė gali būti kiek platesnė,
-           kad adresai ir rangovų pavadinimai netilptų į vieną eilutę rečiau. */
+        /* Esant tokiam plociui panele gali buti kiek platesne,
+           kad adresai ir rangovu pavadinimai netilptu i viena eilute reciau. */
         --panel-w: 330px;
 
         position: static;
@@ -716,8 +761,8 @@
       #filter { margin: 9px 14px 4px; }
       #keys-bar { padding: 6px 14px 4px; }
 
-      /* Prie 300 px aukščio filtrams paliekama mažiau vietos,
-         kad sąrašui liektų bent kelios eilutės. */
+      /* Prie 300 px aukscio filtrams paliekama maziau vietos,
+         kad sarasui liektu bent kelios eilutes. */
       #keys { max-height: 34vh; }
 
       .leaflet-bottom.leaflet-right { bottom: 0; }
@@ -727,7 +772,7 @@
       * { transition: none !important; }
     }
 
-    /* ===== Grafičių sąrašo eilutės ========================================= */
+    /* ===== Graficiu saraso eilutes ========================================= */
 
     .row-title {
       font-size: 12px;
@@ -751,6 +796,14 @@
     #status-bar .sep {
       color: var(--muted);
       padding: 0 2px;
+    }
+
+    /* Redmine uzduoties numeris koordinaciu eiluteje.
+       Sky spalva cia nenaudojama samoningai - ji rezervuota tik tam,
+       kas tikrai paspaudziama. */
+    .row-issue {
+      color: var(--muted-hi);
+      margin-right: 7px;
     }
   </style>
 </head>
@@ -807,7 +860,7 @@
 
   <script>
     /* =========================================================
-       BAZINIS ŽEMĖLAPIS
+       BAZINIS ZEMELAPIS
        Visi variantai nemokami, be API rakto, teikiami per CDN.
        Perjungiama viena eilute: const BASEMAP = BASEMAPS.<vardas>;
        ========================================================= */
@@ -841,23 +894,23 @@
     const BASEMAP = BASEMAPS.positron;
 
     /* =========================================================
-       SERVISO KONFIGŪRACIJA
+       SERVISO KONFIGURACIJA
        ========================================================= */
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Miesto_tvark/Grafiti_view_Public/MapServer/0";
 
-    /* Sluoksnis yra Table be geometrijos, todėl returnGeometry visada false,
-       o taškai konstruojami iš X_koord ir Y_koord. */
+    /* Sluoksnis yra Table be geometrijos, todel returnGeometry visada false,
+       o taskai konstruojami is X_koord ir Y_koord. */
     const whereClause = "statusas_name = 'Vykdoma (Rangovai)'";
 
-    /* Tekstas poraštėje. Turi atitikti whereClause. */
+    /* Tekstas porasteje. Turi atitikti whereClause. */
     const FILTER_LABEL = "Vykdoma (Rangovai)";
 
     /* Serviso vaizdas vadinasi query_layer_2metai. */
     const PERIOD_LABEL = "paskutiniai 2 metai";
 
     const outFieldsList =
-      "OBJECTID,tvark_tipas_name,statusas_name,adresas,rangovas,X_koord,Y_koord";
+      "OBJECTID,tvark_tipas_name,statusas_name,adresas,rangovas,X_koord,Y_koord,redmine_url";
 
     /* Sluoksnio MaxRecordCount = 2000 */
     const pageSize = 2000;
@@ -867,55 +920,73 @@
     const KOORD_WKID = 3346;
 
     /* =========================================================
-       SPALVOS
-       Užpildas koduoja tvarkymo tipą, kontūras – rangovą.
-       Ta pati logika kaip EOP žemėlapiuose.
+       REDMINE NUORODA
+
+       Serviso laukas redmine_url yra tekstinis (length 255) ir jame
+       laikomas tik uzduoties numeris, pvz. 4159. Pilnas adresas
+       sudaromas is sablono zemiau.
        ========================================================= */
 
-    /* Taškų užpildo spalva pagal rangovą.
-       Atitikmuo ieškomas pagal fragmentą mažosiomis raidėmis, todėl veikia
-       nepriklausomai nuo to, ar reikšmėje yra UAB, kabutės ar inicialai
-       (pvz. UAB „D. Varec“ ir D. Varec duos tą pačią spalvą).
-       Spalvos parinktos skirtingo atspalvio ir šviesumo, kad skirtųsi
-       ir esant spalvų skyrimo sutrikimams. */
+    const REDMINE_ISSUE_BASE = "https://redmine.idvilnius.lt/issues/";
+
+    /* "_blank" atidaro nauja skirtuka, o zemelapis lieka atidarytas.
+       "_top" perkelia visa narsykles skirtuka - tai naudinga, kai
+       zemelapis iterptas per {{iframe(...)}} ir norima iseiti is iframe. */
+    const REDMINE_LINK_TARGET = "_blank";
+
+    /* Mygtuko tekstas popup viduje. */
+    const LABEL_OPEN_ISSUE = "Atverti užduotį";
+
+    /* =========================================================
+       SPALVOS
+       Uzpildas koduoja tvarkymo tipa, konturas - rangova.
+       Ta pati logika kaip EOP zemelapiuose.
+       ========================================================= */
+
+    /* Tasku uzpildo spalva pagal rangova.
+       Atitikmuo ieskomas pagal fragmenta mazosiomis raidemis, todel veikia
+       nepriklausomai nuo to, ar reiksmeje yra UAB, kabutes ar inicialai
+       (pvz. UAB "D. Varec" ir D. Varec duos ta pacia spalva).
+       Spalvos parinktos skirtingo atspalvio ir sviesumo, kad skirtusi
+       ir esant spalvu skyrimo sutrikimams. */
     const contractorColorRules = [
       { match: "varec", color: "#0046aa" },
       { match: "dezinfek", color: "#e8590c" },
       { match: "socialin", color: "#40c057" }
     ];
 
-    /* Taškų išvaizda. Kontrūro nėra.
-       Norėdami jį grąžinti, įrašykite spalvą, pvz. "#ffffff". */
+    /* Tasku isvaizda. Kontruro nera.
+       Noredami ji grazinti, irasykite spalva, pvz. "#ffffff". */
     const MARKER_SIZE = 12;
     const MARKER_OPACITY = 0.85;
     const MARKER_STROKE_COLOR = null;
 
     /* =========================================================
-       SPIEČIAI
+       SPIECIAI
        ========================================================= */
 
     const CLUSTER_ENABLED = true;
 
-    /* Apytikslis pradinis miesto mastelis. Nuo jo skaičiuojami žingsniai. */
+    /* Apytikslis pradinis miesto mastelis. Nuo jo skaiciuojami zingsniai. */
     const CLUSTER_BASE_ZOOM = 11;
 
-    /* Po kelių priartinimo žingsnių spiečiai išjungiami visai. */
+    /* Po keliu priartinimo zingsniu spieciai isjungiami visai. */
     const CLUSTER_ZOOM_STEPS = 4;
     const CLUSTER_OFF_ZOOM = CLUSTER_BASE_ZOOM + CLUSTER_ZOOM_STEPS;
 
-    /* Grupavimo spindulys pikseliais. Mažėja priartinant,
-       todėl spiečiai palaipsniui skyla į smulkesnius. */
+    /* Grupavimo spindulys pikseliais. Mazeja priartinant,
+       todel spieciai palaipsniui skyla i smulkesnius. */
     const CLUSTER_MAX_RADIUS = 80;
     const CLUSTER_MIN_RADIUS = 28;
 
-    /* Spiečiaus spalva, kai jame yra daugiau negu vieno rangovo objektų. */
+    /* Spieciaus spalva, kai jame yra daugiau negu vieno rangovo objektu. */
     const CLUSTER_MIXED_COLOR = "#021d44";
 
-    /* Mastelis, iki kurio priartinama pasirinkus objektą sąraše. */
+    /* Mastelis, iki kurio priartinama pasirinkus objekta sarase. */
     const FOCUS_ZOOM = 18;
 
     /* GRAFITI_STAT domenas. Statusas 8 dokumentacijoje sutinkamas
-       dviem rašybomis, todėl įrašytos abi. */
+       dviem rasybomis, todel irasytos abi. */
     const statusColors = {
       "Užfiksuota (VMS)": "#67778f",
       "Patvirtinta (VMS)": "#0070d9",
@@ -930,9 +1001,9 @@
 
     const DEFAULT_STATUS_COLOR = "#bec7cc";
 
-    /* Rangovų sąrašas iš anksto nežinomas, todėl spalvos priskiriamos
-       iš fiksuotos paletės pagal abėcėlę. Kol rangovų rinkinys nesikeičia,
-       spalvos išlieka tos pačios. */
+    /* Rangovu sarasas is anksto nezinomas, todel spalvos priskiriamos
+       is fiksuotos paletes pagal abecele. Kol rangovu rinkinys nesikeicia,
+       spalvos islieka tos pacios. */
     const contractorPalette = [
       "#1f78b4",
       "#33a02c",
@@ -949,7 +1020,7 @@
     let contractorColors = {};
 
     /* =========================================================
-       PAGALBINĖS FUNKCIJOS
+       PAGALBINES FUNKCIJOS
        ========================================================= */
 
     proj4.defs(
@@ -1006,6 +1077,41 @@
       return contractorColors[key] || DEFAULT_CONTRACTOR_COLOR;
     }
 
+    /* Grazina { id, url } arba null.
+
+       Laukas yra tekstinis, todel apdorojami trys atvejai:
+         - tuscias arba NULL           -> null
+         - pilnas adresas su http      -> naudojamas kaip yra
+         - numeris, galimai su tarpais -> paliekami tik skaitmenys
+
+       Skaitmenu filtras yra svarbus: be jo tarpas arba bruksnelis
+       patektu i adresa ir nuoroda nuluztu. */
+    function redmineIssue(rawValue) {
+      const text = normalizeText(rawValue);
+      if (!text) return null;
+
+      if (/^https?:\/\//i.test(text)) {
+        const fromUrl = text.match(/\/issues\/(\d+)/);
+        return { id: fromUrl ? fromUrl[1] : null, url: text };
+      }
+
+      const digits = text.replace(/\D+/g, "");
+      if (!digits) return null;
+
+      return { id: digits, url: REDMINE_ISSUE_BASE + digits };
+    }
+
+    /* Isorines nuorodos ikona ta pacia linijine maniera kaip zemelapio smeigtukas */
+    function externalLinkSvg() {
+      return (
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+        '<path d="M14 4h6v6"/>' +
+        '<path d="M20 4l-8.5 8.5"/>' +
+        '<path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V7.5A1.5 1.5 0 0 1 5 6h4.5"/>' +
+        "</svg>"
+      );
+    }
+
     function assignContractorColors(keys) {
       const unique = [];
 
@@ -1040,13 +1146,13 @@
         paletteIndex++;
 
         console.warn(
-          '[grafiti] rangovui "' + key + '" nėra spalvos taisyklės, priskirta iš atsarginės paletes'
+          '[grafiti] rangovui "' + key + '" nėra spalvos taisyklės, priskirta iš atsarginės paletės'
         );
       });
     }
 
     /* =========================================================
-       ŽEMĖLAPIS
+       ZEMELAPIS
        ========================================================= */
 
     document.documentElement.setAttribute("data-basemap", BASEMAP.tone);
@@ -1172,7 +1278,7 @@
     let typeKeys = [];
     let contractorKeys = [];
 
-    /* Kompaktiniame režime panelė yra virš žemėlapio. */
+    /* Kompaktiniame rezime panele yra virs zemelapio. */
     L.DomEvent.disableClickPropagation(panelEl);
     L.DomEvent.disableScrollPropagation(panelEl);
 
@@ -1182,7 +1288,7 @@
       }, 60);
     }
 
-    /* ===== Eigos bėgis ===== */
+    /* ===== Eigos begis ===== */
     function setProgress(loaded, total) {
       railEl.removeAttribute("data-state");
       const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
@@ -1206,7 +1312,7 @@
     }
 
     /* =========================================================
-       UŽKLAUSOS
+       UZKLAUSOS
        ========================================================= */
 
     function queryUrl(params) {
@@ -1217,8 +1323,8 @@
     }
 
     /* Tikrinamas ir HTTP statusas, ir ArcGIS klaidos objektas.
-       ArcGIS klaidą dažnai grąžina su HTTP 200, todėl be šio patikrinimo
-       klaida atrodytų kaip tuščias rezultatas. */
+       ArcGIS klaida daznai grazina su HTTP 200, todel be sio patikrinimo
+       klaida atrodytu kaip tuscias rezultatas. */
     async function fetchJson(url) {
       const resp = await fetch(url, { cache: "no-store", mode: "cors" });
 
@@ -1282,7 +1388,7 @@
       return collected;
     }
 
-    /* Kai filtras nieko neranda, parodomos realios servise esančios reikšmės. */
+    /* Kai filtras nieko neranda, parodomos realios servise esancios reiksmes. */
     async function showStatusDiagnostics() {
       try {
         const data = await fetchJson(
@@ -1318,7 +1424,7 @@
     }
 
     /* =========================================================
-       SĄRAŠAS IR FILTRAI
+       SARASAS IR FILTRAI
        ========================================================= */
 
     function clearActiveRows() {
@@ -1365,8 +1471,8 @@
         return item.layer;
       });
 
-      /* addLayers yra markercluster metodas ir prideda viską vienu kartu.
-         Prie 500+ objektų tai daug greitesnis būdas negu po vieną. */
+      /* addLayers yra markercluster metodas ir prideda viska vienu kartu.
+         Prie 500+ objektu tai daug greitesnis budas negu po viena. */
       if (typeof featureLayer.addLayers === "function") {
         featureLayer.addLayers(layers);
       } else {
@@ -1591,7 +1697,7 @@
     }
 
     /* =========================================================
-       PAŽYMĖJIMAS
+       PAZYMEJIMAS
        ========================================================= */
 
     function itemPopupHtml(item) {
@@ -1608,15 +1714,35 @@
         "</div>" +
         '<div class="pop-line" style="font-family:var(--font-mono);font-size:11px">' +
           item.lat.toFixed(5) + ", " + item.lon.toFixed(5) +
-        "</div>"
+        "</div>" +
+        popupActionHtml(item)
+      );
+    }
+
+    function popupActionHtml(item) {
+      if (!item.redmine) {
+        return '<div class="pop-note">Redmine užduotis nenurodyta</div>';
+      }
+
+      /* Uzduoties numeris paliekamas title atribute: pasiekiamas
+         uzvedus, bet mygtuko teksto neapkrauna. */
+      const hint = item.redmine.id ? ' title="#' + esc(item.redmine.id) + '"' : "";
+
+      return (
+        '<a class="pop-action" href="' + esc(item.redmine.url) + '"' +
+        ' target="' + esc(REDMINE_LINK_TARGET) + '"' +
+        ' rel="noopener noreferrer"' + hint + '>' +
+        externalLinkSvg() +
+        "<span>" + LABEL_OPEN_ISSUE + "</span>" +
+        "</a>"
       );
     }
 
     function focusItem(item) {
       map.setView([item.lat, item.lon], FOCUS_ZOOM);
 
-      /* Atskiras popup, o ne žymeklio popup: pasirinktas objektas gali būti
-         spiečiuje ir tuo momentu dar nebūti pridėtas prie žemėlapio. */
+      /* Atskiras popup, o ne zymeklio popup: pasirinktas objektas gali buti
+         spieciuje ir tuo momentu dar nebuti pridetas prie zemelapio. */
       L.popup()
         .setLatLng([item.lat, item.lon])
         .setContent(itemPopupHtml(item))
@@ -1628,7 +1754,7 @@
     }
 
     /* =========================================================
-       PANELĖS VALDYMAS
+       PANELES VALDYMAS
        ========================================================= */
 
     sheetHandle.addEventListener("click", function () {
@@ -1647,7 +1773,7 @@
     filterInput.addEventListener("input", applyFilter);
 
     /* =========================================================
-       DUOMENŲ ĮKĖLIMAS
+       DUOMENU IKELIMAS
        ========================================================= */
 
     async function loadData() {
@@ -1710,6 +1836,7 @@
 
           prepared.push({
             objectId: a.OBJECTID,
+            redmine: redmineIssue(a.redmine_url),
             adresas: normalizeText(a.adresas),
             typeText: getTypeText(a.tvark_tipas_name),
             typeKey: getTypeText(a.tvark_tipas_name),
@@ -1729,8 +1856,8 @@
           p.contractorColor = getContractorColor(p.contractorKey);
 
           /* L.marker su divIcon, nes markercluster nepalaiko L.circleMarker.
-             Vaizdas toks pat: užpildytas skritulys be kontūro.
-             idvColor perduodamas spiečiaus spalvai nustatyti. */
+             Vaizdas toks pat: uzpildytas skritulys be konturo.
+             idvColor perduodamas spieciaus spalvai nustatyti. */
           const layer = L.marker([p.lat, p.lon], {
             icon: dotIcon(p.contractorColor),
             idvColor: p.contractorColor,
@@ -1750,13 +1877,19 @@
               '<span class="dot fill" style="background:' + esc(p.contractorColor) + '"></span>' +
               esc(p.contractorText) +
             "</div>" +
-            '<div class="row-coords">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + "</div>";
+            '<div class="row-coords">' +
+              (p.redmine && p.redmine.id
+                ? '<span class="row-issue">#' + esc(p.redmine.id) + "</span>"
+                : "") +
+              p.lat.toFixed(5) + ", " + p.lon.toFixed(5) +
+            "</div>";
 
           const item = Object.assign({}, p, { layer: layer, rowEl: row });
 
           item.searchText =
             (p.adresas || "") + " " + p.contractorText + " " +
-            p.typeText + " " + p.statusText + " " + (p.objectId || "");
+            p.typeText + " " + p.statusText + " " + (p.objectId || "") + " " +
+            (p.redmine && p.redmine.id ? p.redmine.id : "");
 
           layer.bindPopup(itemPopupHtml(item));
 
@@ -1786,8 +1919,8 @@
           skippedNoCoords: skippedNoCoords
         });
 
-        /* Pagal numatymą įjungiami visi tipai ir rangovai:
-           statuso filtras jau pritaikytas serverio pusėje. */
+        /* Pagal numatyma ijungiami visi tipai ir rangovai:
+           statuso filtras jau pritaikytas serverio puseje. */
         selectedTypes = new Set(allItems.map(function (item) { return item.typeKey; }));
         selectedContractors = new Set(allItems.map(function (item) { return item.contractorKey; }));
 
