@@ -40,7 +40,7 @@
       --panel-w: 304px;
       --handle-h: 46px;
 
-      /* Fonas po plytelėmis, kad kraunantis nemirgėtų balti tarpai */
+      /* Fonas po plytelemis, kad kraunantis nemirgetu balti tarpai */
       --map-bg: #f2f2f0;
     }
 
@@ -70,7 +70,7 @@
       background: var(--map-bg);
     }
 
-    /* ===== Panelė ===== */
+    /* ===== Panele ===== */
     #panel {
       flex: 0 0 var(--panel-w);
       max-width: var(--panel-w);
@@ -82,7 +82,7 @@
       border-left: 1px solid var(--line);
     }
 
-    /* Įkėlimo eigos bėgis */
+    /* Ikelimo eigos begis */
     #rail {
       height: 2px;
       flex: 0 0 2px;
@@ -100,7 +100,7 @@
     #rail[data-state="done"] #rail-fill { opacity: 0; }
     #rail[data-state="error"] #rail-fill { width: 100%; background: var(--danger); opacity: 1; }
 
-    /* ===== Antraštė ===== */
+    /* ===== Antraste ===== */
     #panel-head {
       flex: 0 0 auto;
       border-bottom: 1px solid var(--line);
@@ -154,7 +154,7 @@
 
     #sheet-handle:hover #sheet-grip { background: var(--sky); }
 
-    /* ===== Kūnas ===== */
+    /* ===== Kunas ===== */
     #panel-body {
       flex: 1;
       min-height: 0;
@@ -213,9 +213,12 @@
     #keys-toggle:hover { color: #fff; background: var(--surface); }
 
     #keys {
-      flex: 0 1 auto;
-      max-height: 42%;
+      /* flex-shrink privalo buti 0, kitaip sarasas suspaudzia filtrus
+         iki juosteles ir ju nebeimanoma isskleisti. */
+      flex: 0 0 auto;
+      max-height: 40vh;
       overflow-y: auto;
+      overscroll-behavior: contain;
       padding: 0 14px 8px;
     }
 
@@ -304,7 +307,7 @@
 
     .pill[aria-pressed="true"] .pill-count { color: var(--sky); }
 
-    /* Skrituliai: užpildytas = statusas, kontūrinis = įmonė */
+    /* Skrituliai: uzpildytas = statusas, konturinis = imone */
     .dot {
       display: inline-block;
       width: 10px;
@@ -318,11 +321,12 @@
       border: 2px solid currentColor;
     }
 
-    /* ===== Sąrašas ===== */
+    /* ===== Sarasas ===== */
     #list {
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
+      overscroll-behavior: contain;
       border-top: 1px solid var(--line);
     }
 
@@ -387,6 +391,24 @@
       text-overflow: ellipsis;
     }
 
+    /* Redmine uzduoties numeris saraso eiluteje.
+
+       Rasomas su zodziu "Redmine", nes .row-id jau rodo #OBJECTID.
+       Be zodzio eiluteje butu du skirtingi numeriai su grotelemis ir
+       ju nebutu imanoma atskirti.
+
+       Sky spalva cia nenaudojama samoningai - ji rezervuota tik tam,
+       kas tikrai paspaudziama. */
+    .row-issue {
+      display: block;
+      margin-top: 3px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
     #list-empty {
       padding: 18px 14px;
       font-size: 12px;
@@ -401,7 +423,51 @@
       margin-bottom: 3px;
     }
 
-    /* ===== Poraštė ===== */
+    /* ===== Slankikliai ===== */
+
+    #list,
+    #keys {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.20) transparent;
+    }
+
+    #list::-webkit-scrollbar,
+    #keys::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    #list::-webkit-scrollbar-track,
+    #keys::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #list::-webkit-scrollbar-thumb,
+    #keys::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      border: 3px solid transparent;
+      background-clip: content-box;
+    }
+
+    #list::-webkit-scrollbar-thumb:hover,
+    #keys::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(0, 183, 244, 0.55);
+    }
+
+    /* Rodykles slankiklio galuose pasalinamos */
+    #list::-webkit-scrollbar-button,
+    #keys::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    #list::-webkit-scrollbar-corner,
+    #keys::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    /* ===== Poraste ===== */
     #status-bar {
       flex: 0 0 auto;
       padding: 7px 14px;
@@ -423,7 +489,7 @@
       background: rgba(255, 107, 107, 0.08);
     }
 
-    /* ===== Leaflet perdažymas ===== */
+    /* ===== Leaflet perdazymas ===== */
     .leaflet-container {
       font-family: var(--font-ui);
       background: var(--map-bg);
@@ -519,7 +585,52 @@
 
     .overlap-select-item:hover { background: var(--surface); }
 
-    /* ===== Kompaktinis režimas: žemas iframe arba mobilus ===== */
+    /* ===== Nuoroda i Redmine uzduoti popup viduje =====
+       Selektorius su .leaflet-popup-content, nes Leaflet turi savo
+       .leaflet-container a spalva, kuri kitaip nugaletu. */
+    .leaflet-popup-content .pop-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 9px;
+      padding: 6px 11px;
+      border-radius: 6px;
+      background: rgba(0, 183, 244, 0.14);
+      border: 1px solid rgba(0, 183, 244, 0.38);
+      color: var(--sky);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+
+    .leaflet-popup-content .pop-action:hover,
+    .leaflet-popup-content .pop-action:focus-visible {
+      background: rgba(0, 183, 244, 0.26);
+      border-color: var(--sky);
+      color: #fff;
+      outline: none;
+    }
+
+    .leaflet-popup-content .pop-action svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+
+    .pop-note {
+      margin-top: 8px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ===== Kompaktinis rezimas: zemas iframe arba mobilus ===== */
     @media (max-width: 640px), (max-height: 520px) {
       #app {
         display: block;
@@ -558,9 +669,65 @@
 
       #panel:not(.open) #status-bar { display: none; }
 
-      #keys { max-height: none; }
+      #keys { max-height: 32vh; }
 
       .leaflet-bottom.leaflet-right { bottom: calc(var(--handle-h) + 4px); }
+    }
+
+    /* ===== Platus ir zemas langas ==============================
+       Kai aukstis yra 300 px arba maziau, o plotis didesnis negu 1200 px,
+       apatinis lapas butu aukstesnis uz pati zemelapi, todel panele
+       grazinama i desini sona.
+
+       Blokas eina PO kompaktinio rezimo, todel esant vienodam
+       specifiskumui laimi sios taisykles.
+       ========================================================= */
+    @media (min-width: 1201px) and (max-height: 300px) {
+      #app {
+        display: flex;
+        position: static;
+      }
+
+      #map {
+        position: static;
+        inset: auto;
+        flex: 1;
+        min-width: 0;
+      }
+
+      #panel {
+        /* Esant tokiam plociui panele gali buti kiek platesne, kad
+           statusu pavadinimai reciau luztu i dvi eilutes. */
+        --panel-w: 330px;
+
+        position: static;
+        flex: 0 0 var(--panel-w);
+        max-width: var(--panel-w);
+        max-height: none;
+        z-index: auto;
+        border-left: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      #rail { border-radius: 0; }
+
+      #panel-head { border-bottom: 1px solid var(--line); }
+      #panel-title { display: flex; padding: 9px 14px; }
+      #sheet-handle { display: none; }
+
+      #panel-body { display: flex; }
+      #panel:not(.open) #status-bar { display: block; }
+
+      #filter { margin: 9px 14px 4px; }
+      #keys-bar { padding: 6px 14px 4px; }
+
+      /* Prie 300 px aukscio filtrams paliekama maziau vietos,
+         kad sarasui liektu bent kelios eilutes. */
+      #keys { max-height: 34vh; }
+
+      .leaflet-bottom.leaflet-right { bottom: 0; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -620,7 +787,7 @@
 
   <script>
     /* =========================================================
-       KONFIGŪRACIJA – nekeista
+       KONFIGURACIJA
        ========================================================= */
     const arcgisLayerUrl =
       "https://opencity.idvilnius.lt/atviras/rest/services/Eismo_valdymas/EOP_uzduociu_geometrija/FeatureServer/3";
@@ -629,12 +796,44 @@
     const TARGET_COMPANY_NAME = "Gatas";
 
     const ENVIRONMENT_FIELD = "Aplinka";
+
+    /* 2 = Produkcine. Anksciau buvo 1 = Testine.
+       Reiksme naudojama ir serverio uzklausoje, ir porastes tekste,
+       todel keiciama tik cia. */
     const ENVIRONMENT_VALUE = "1";
+
+    /* Rodomos tik tos uzduotys, kurios jau turi Redmine nuoroda. */
+    const REQUIRE_REDMINE = true;
 
     const STATUS_FIELD = "Statusas";
     const COMPANY_FIELD = "Imone";
 
     const EXCLUDED_STATUS_CODES = ["0"];
+
+    /* =========================================================
+       REDMINE NUORODA
+
+       Lauko pavadinimas servise. Jeigu jis pasikeistu, uztenka pakeisti
+       sia viena eilute.
+
+       Reiksme skaitoma atspariai: pirma ieskoma tikslaus rakto, po to
+       nepaisant raidziu dydzio. Jeigu lauko nera visai, konsoleje
+       vienakart parasoma, kokie laukai realiai atejo is serviso, todel
+       tylaus luzio nebus.
+
+       Laukas gali tureti arba tik uzduoties numeri, pvz. 4159, arba
+       pilna adresa. Abu atvejai apdorojami.
+       ========================================================= */
+    const REDMINE_FIELD = "redmineIssueID";
+
+    const REDMINE_ISSUE_BASE = "https://redmine-test.idvilnius.lt/issues/";
+
+    /* "_blank" atidaro nauja skirtuka, o zemelapis lieka atidarytas.
+       "_top" perkelia visa narsykles skirtuka - tai naudinga, kai
+       zemelapis iterptas per {{iframe(...)}} ir norima iseiti is iframe. */
+    const REDMINE_LINK_TARGET = "_blank";
+
+    const LABEL_OPEN_ISSUE = "Atverti užduotį";
 
     const STATUS_DOMAIN = [
       { name: "Vykdoma", code: "1" },
@@ -694,7 +893,7 @@
     );
 
     /* =========================================================
-       PAGALBINĖS FUNKCIJOS – nekeista, išskyrus esc()
+       PAGALBINES FUNKCIJOS
        ========================================================= */
     function esc(value) {
       return String(value === null || value === undefined ? "" : value).replace(
@@ -716,9 +915,77 @@
       return String(value);
     }
 
-    function lksToWgs(x, y) {
-      const result = proj4("EPSG:3346", "EPSG:4326", [x, y]);
-      return [result[1], result[0]];
+    function normalizeText(value) {
+      if (value === null || value === undefined) return "";
+      return String(value).trim();
+    }
+
+    /* ===== Redmine lauko skaitymas ===== */
+
+    /* Ispejimas rodomas tik viena karta, kad konsole neuzsiverstu
+       vienodais pranesimais prie keliu simtu objektu. */
+    let redmineFieldWarned = false;
+
+    function readRedmineRaw(attrs) {
+      if (!attrs) return null;
+
+      if (Object.prototype.hasOwnProperty.call(attrs, REDMINE_FIELD)) {
+        return attrs[REDMINE_FIELD];
+      }
+
+      /* Atsarginis kelias: ArcGIS lauko pavadinimas gali skirtis raidziu
+         dydziu nuo to, kuris nurodytas konfiguracijoje. */
+      const wanted = String(REDMINE_FIELD).toLowerCase();
+      const keys = Object.keys(attrs);
+
+      for (let i = 0; i < keys.length; i++) {
+        if (keys[i].toLowerCase() === wanted) return attrs[keys[i]];
+      }
+
+      if (!redmineFieldWarned) {
+        redmineFieldWarned = true;
+        console.warn(
+          '[eop] lauko "' + REDMINE_FIELD + '" servise nera. Gauti laukai: ' +
+          keys.join(", ") + ". Redmine nuoroda popup lange nerodoma."
+        );
+      }
+
+      return null;
+    }
+
+    /* Grazina { id, url } arba null.
+
+       Apdorojami trys atvejai:
+         - tuscias arba NULL           -> null
+         - pilnas adresas su http      -> naudojamas kaip yra
+         - numeris, galimai su tarpais -> paliekami tik skaitmenys
+
+       Skaitmenu filtras yra svarbus: be jo tarpas arba bruksnelis
+       patektu i adresa ir nuoroda nuluztu. */
+    function redmineIssue(rawValue) {
+      const text = normalizeText(rawValue);
+      if (!text) return null;
+
+      if (/^https?:\/\//i.test(text)) {
+        const fromUrl = text.match(/\/issues\/(\d+)/);
+        return { id: fromUrl ? fromUrl[1] : null, url: text };
+      }
+
+      const digits = text.replace(/\D+/g, "");
+      if (!digits) return null;
+
+      return { id: digits, url: REDMINE_ISSUE_BASE + digits };
+    }
+
+    /* Isorines nuorodos ikona ta pacia linijine maniera kaip zemelapio smeigtukas */
+    function externalLinkSvg() {
+      return (
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+        '<path d="M14 4h6v6"/>' +
+        '<path d="M20 4l-8.5 8.5"/>' +
+        '<path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V7.5A1.5 1.5 0 0 1 5 6h4.5"/>' +
+        "</svg>"
+      );
     }
 
     function isExcludedStatus(statusKey) {
@@ -760,6 +1027,11 @@
       if (Array.isArray(geometry.paths)) return "Linija";
       if (typeof geometry.x === "number" && typeof geometry.y === "number") return "Taškas";
       return "Nežinoma geometrija";
+    }
+
+    function lksToWgs(x, y) {
+      const result = proj4("EPSG:3346", "EPSG:4326", [x, y]);
+      return [result[1], result[0]];
     }
 
     function polygonToLatLngs(geometry) {
@@ -835,7 +1107,7 @@
           return pt ? L.latLng(pt[0], pt[1]) : null;
         }
       } catch (err) {
-        console.error("Klaida skaičiuojant geometrijos centrą:", err, geometry);
+        console.error("Klaida skaiciuojant geometrijos centra:", err, geometry);
       }
 
       return null;
@@ -888,17 +1160,14 @@
           });
         }
       } catch (err) {
-        console.error("Klaida kuriant Leaflet sluoksnį:", err, geometry);
+        console.error("Klaida kuriant Leaflet sluoksni:", err, geometry);
       }
 
       return null;
     }
 
     /* =========================================================
-       ŽEMĖLAPIS
-       ========================================================= */
-    /* =========================================================
-       BAZINIS ŽEMĖLAPIS
+       BAZINIS ZEMELAPIS
        Visi variantai nemokami, be API rakto, teikiami per CDN.
        Perjungiama viena eilute: const BASEMAP = BASEMAPS.<vardas>;
        ========================================================= */
@@ -907,28 +1176,21 @@
       '© <a href="https://carto.com/attributions">CARTO</a>';
 
     const BASEMAPS = {
-      /* Šviesiai pilkas su užrašais – numatytasis */
       positron: {
         tone: "light",
         url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
         attribution: CARTO_ATTRIBUTION
       },
-
-      /* Šviesiai pilkas be užrašų – kai geometrija tanki */
       positronNoLabels: {
         tone: "light",
         url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
         attribution: CARTO_ATTRIBUTION
       },
-
-      /* Tamsus su užrašais */
       darkMatter: {
         tone: "dark",
         url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
         attribution: CARTO_ATTRIBUTION
       },
-
-      /* Tamsus be užrašų */
       darkMatterNoLabels: {
         tone: "dark",
         url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
@@ -951,14 +1213,12 @@
     }).addTo(map);
 
     /* ===== DOM ===== */
-    const appEl = document.getElementById("app");
     const panelEl = document.getElementById("panel");
     const listEl = document.getElementById("list");
     const filterInput = document.getElementById("filter");
     const statusGroupEl = document.getElementById("status-group");
     const companySwatch = document.getElementById("company-swatch");
     const companyNameEl = document.getElementById("company-name");
-    const keysEl = document.getElementById("keys");
     const keysToggle = document.getElementById("keys-toggle");
     const sheetHandle = document.getElementById("sheet-handle");
     const sheetLabel = document.getElementById("sheet-label");
@@ -968,8 +1228,8 @@
     const railEl = document.getElementById("rail");
     const railFill = document.getElementById("rail-fill");
 
-    /* Antraštėje įmonė rodoma kaip tapatybė, ne kaip filtras:
-       visi šio žemėlapio objektai priklauso vienai įmonei. */
+    /* Antrasteje imone rodoma kaip tapatybe, ne kaip filtras:
+       visi sio zemelapio objektai priklauso vienai imonei. */
     companyNameEl.textContent = TARGET_COMPANY_NAME;
     companySwatch.style.color = getCompanyStrokeColor(TARGET_COMPANY_CODE);
 
@@ -978,8 +1238,8 @@
     let selectedStatuses = new Set(DEFAULT_VISIBLE_STATUSES);
     let statusKeys = [];
 
-    /* Panelė kompaktiniame režime yra virš žemėlapio, todėl paspaudimai
-       ir slinkimas neturi patekti į map.on("click") apdorojimą. */
+    /* Panele kompaktiniame rezime yra virs zemelapio, todel paspaudimai
+       ir slinkimas neturi patekti i map.on("click") apdorojima. */
     L.DomEvent.disableClickPropagation(panelEl);
     L.DomEvent.disableScrollPropagation(panelEl);
 
@@ -989,7 +1249,7 @@
       }, 60);
     }
 
-    /* ===== Eigos bėgis ===== */
+    /* ===== Eigos begis ===== */
     function setProgress(loaded, total) {
       railEl.removeAttribute("data-state");
       const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
@@ -1001,7 +1261,7 @@
       railEl.setAttribute("data-state", state);
     }
 
-    /* ===== Būsenos tekstas ===== */
+    /* ===== Busenos tekstas ===== */
     function setStatus(html, isError) {
       statusBar.innerHTML = html;
       statusBar.classList.toggle("is-error", !!isError);
@@ -1014,7 +1274,7 @@
     }
 
     /* =========================================================
-       UŽKLAUSOS – logika nekeista, pridėtas eigos atgalinis skambutis
+       UZKLAUSOS
        ========================================================= */
     function queryUrl(params) {
       const url =
@@ -1043,44 +1303,81 @@
       return data;
     }
 
-    async function fetchAllFeatures() {
-      try {
-        const idsData = await fetchQuery({
-          where: "1=1",
-          returnIdsOnly: "true",
+    /* Filtras taikomas SERVERIO puseje, todel per tinkla keliauja tik
+       reikalingi irasai.
+
+       Redmine salyga atskirta nuo aplinkos salygos samoningai. Jeigu
+       laukas servise dar nepaskelbtas, ArcGIS grazintu klaida ir
+       zemelapis liktu tuscias. Todel pirmas bandymas su ja, o nepavykus -
+       be jos, ir tada Redmine filtras pritaikomas narsykleje. */
+    let redmineFilterServerSide = true;
+
+    function buildWhere(includeRedmine) {
+      /* Aplinka yra esriFieldTypeSmallInteger, todel be kabuciu. */
+      const parts = [ENVIRONMENT_FIELD + " = " + ENVIRONMENT_VALUE];
+
+      if (includeRedmine && REQUIRE_REDMINE) {
+        /* IS NOT NULL veikia nepriklausomai nuo lauko tipo.
+
+           Tuscia eilute cia NETIKRINAMA samoningai: jeigu laukas butu
+           skaitinis, palyginimas su tuscia eilute butu SQL klaida.
+           Tuscias reiksmes atmeta redmineIssue() narsykleje. */
+        parts.push(REDMINE_FIELD + " IS NOT NULL");
+      }
+
+      return parts.join(" AND ");
+    }
+
+    async function fetchByObjectIds(where) {
+      const idsData = await fetchQuery({
+        where: where,
+        returnIdsOnly: "true",
+        f: "json"
+      });
+
+      const objectIds = idsData.objectIds || [];
+
+      if (!objectIds.length) return [];
+
+      const features = [];
+      const chunkSize = 150;
+
+      for (let i = 0; i < objectIds.length; i += chunkSize) {
+        const chunk = objectIds.slice(i, i + chunkSize);
+
+        /* outFields yra "*", todel naujai i servisa pridetas laukas
+           atkeliauja automatiskai, be kodo pakeitimu. */
+        const data = await fetchQuery({
+          objectIds: chunk.join(","),
+          outFields: "*",
+          returnGeometry: "true",
           f: "json"
         });
 
-        const objectIds = idsData.objectIds || [];
-
-        if (!objectIds.length) return [];
-
-        const features = [];
-        const chunkSize = 150;
-
-        for (let i = 0; i < objectIds.length; i += chunkSize) {
-          const chunk = objectIds.slice(i, i + chunkSize);
-
-          const data = await fetchQuery({
-            objectIds: chunk.join(","),
-            outFields: "*",
-            returnGeometry: "true",
-            f: "json"
-          });
-
-          if (data.features && data.features.length) {
-            features.push.apply(features, data.features);
-          }
-
-          setProgress(Math.min(i + chunkSize, objectIds.length), objectIds.length);
+        if (data.features && data.features.length) {
+          features.push.apply(features, data.features);
         }
 
-        return features;
+        setProgress(Math.min(i + chunkSize, objectIds.length), objectIds.length);
+      }
+
+      return features;
+    }
+
+    async function fetchAllFeatures() {
+      try {
+        return await fetchByObjectIds(buildWhere(true));
       } catch (e) {
-        console.warn("Nepavyko krauti per objectIds, bandoma paprasta query:", e);
+        redmineFilterServerSide = false;
+
+        console.warn(
+          "[eop] uzklausa su salyga " + REDMINE_FIELD + " IS NOT NULL nepavyko: " +
+          (e && e.message ? e.message : e) +
+          ". Kraunama tik pagal aplinka, Redmine filtras taikomas narsykleje."
+        );
 
         const data = await fetchQuery({
-          where: "1=1",
+          where: buildWhere(false),
           outFields: "*",
           returnGeometry: "true",
           f: "json"
@@ -1091,7 +1388,7 @@
     }
 
     /* =========================================================
-       SĄRAŠAS IR FILTRAI
+       SARASAS IR FILTRAI
        ========================================================= */
     function clearActiveRows() {
       document.querySelectorAll(".feature-row.active").forEach(function (el) {
@@ -1145,7 +1442,8 @@
       setStatus(
         '<span class="num">' + visibleItems.length + "</span> iš " +
           '<span class="num">' + allItems.length + "</span> objektų · " +
-          esc(envText) + " aplinka"
+          esc(envText) + " aplinka" +
+          (REQUIRE_REDMINE ? " · tik su Redmine užduotimi" : "")
       );
 
       sheetLabel.textContent = visibleItems.length ? "Objektų sąrašas" : "Nieko nerodoma";
@@ -1320,7 +1618,7 @@
     }
 
     /* =========================================================
-       PAŽYMĖJIMAS ŽEMĖLAPYJE – logika nekeista
+       PAZYMEJIMAS ZEMELAPYJE
        ========================================================= */
     function pointInPolygon(point, polygonPoints) {
       let inside = false;
@@ -1403,6 +1701,28 @@
       return false;
     }
 
+    /* Mygtukas i Redmine uzduoti. Jeigu nuorodos nera, rodomas
+       paaiskinimas, o ne tuscia vieta - taip aisku, kad tai duomenu,
+       o ne sasajos trukumas. */
+    function popupActionHtml(item) {
+      if (!item.redmine) {
+        return '<div class="pop-note">Redmine užduotis nenurodyta</div>';
+      }
+
+      /* Uzduoties numeris paliekamas title atribute: pasiekiamas
+         uzvedus, bet mygtuko teksto neapkrauna. */
+      const hint = item.redmine.id ? ' title="#' + esc(item.redmine.id) + '"' : "";
+
+      return (
+        '<a class="pop-action" href="' + esc(item.redmine.url) + '"' +
+        ' target="' + esc(REDMINE_LINK_TARGET) + '"' +
+        ' rel="noopener noreferrer"' + hint + ">" +
+        externalLinkSvg() +
+        "<span>" + LABEL_OPEN_ISSUE + "</span>" +
+        "</a>"
+      );
+    }
+
     function itemPopupHtml(item) {
       return (
         '<div class="pop-id">#' + esc(item.objectId) + "</div>" +
@@ -1416,7 +1736,8 @@
         "</div>" +
         '<div class="pop-line">' + esc(item.geometryTypeText) +
           " · " + esc(item.environmentText) + " aplinka" +
-        "</div>"
+        "</div>" +
+        popupActionHtml(item)
       );
     }
 
@@ -1434,6 +1755,10 @@
         .openOn(map);
     }
 
+    /* Persidengus keliems objektams pirma rodomas pasirinkimas.
+       Redmine mygtukas cia nededamas samoningai: pasirinkus objekta
+       atsidaro pilnas popup, kuriame mygtukas yra. Taip isvengiama
+       kelio nuorodu viename mazame lange. */
     function showMultiSelectPopup(items, latlng) {
       const html =
         '<div style="min-width:210px">' +
@@ -1494,7 +1819,7 @@
     });
 
     /* =========================================================
-       PANELĖS VALDYMAS
+       PANELES VALDYMAS
        ========================================================= */
     sheetHandle.addEventListener("click", function () {
       const isOpen = panelEl.classList.toggle("open");
@@ -1512,7 +1837,7 @@
     filterInput.addEventListener("input", applyFilter);
 
     /* =========================================================
-       DUOMENŲ ĮKĖLIMAS
+       DUOMENU IKELIMAS
        ========================================================= */
     async function loadData() {
       try {
@@ -1524,6 +1849,7 @@
         allItems = [];
         listEl.innerHTML = "";
         statusGroupEl.innerHTML = "";
+        redmineFieldWarned = false;
 
         const features = await fetchAllFeatures();
 
@@ -1543,6 +1869,8 @@
         let skippedNoGeometry = 0;
         let skippedNoLayer = 0;
         let skippedNoCenter = 0;
+        let skippedNoRedmine = 0;
+        let withRedmine = 0;
         let addedCount = 0;
 
         features.forEach(function (f) {
@@ -1589,6 +1917,18 @@
           const companyColor = getCompanyStrokeColor(companyCode);
           const statusColor = getStatusFillColor(statusValue);
 
+          const redmine = redmineIssue(readRedmineRaw(attrs));
+
+          /* Patikrinimas atliekamas ir cia, ne tik serverio puseje.
+             Taip atmetamos tuscios eilutes, kuriu IS NOT NULL nepagauna,
+             ir veikia atsarginis kelias, kai serverio filtras nepavyko. */
+          if (REQUIRE_REDMINE && !redmine) {
+            skippedNoRedmine++;
+            return;
+          }
+
+          if (redmine) withRedmine++;
+
           const layer = createLeafletLayer(geom, companyCode, statusValue);
           if (!layer) {
             skippedNoLayer++;
@@ -1613,7 +1953,10 @@
             '<div class="row-line">' +
               '<span class="dot fill" style="background:' + esc(statusColor) + '"></span>' +
               esc(statusText) +
-            "</div>";
+            "</div>" +
+            (redmine && redmine.id
+              ? '<span class="row-issue">Redmine #' + esc(redmine.id) + "</span>"
+              : "");
 
           const item = {
             objectId: objectId,
@@ -1630,9 +1973,11 @@
             center: center,
             layer: layer,
             rowEl: row,
+            redmine: redmine,
             searchText:
               objectId + " " + companyText + " " + environmentText + " " +
-              statusText + " " + geometryTypeText + " " + TARGET_COMPANY_NAME
+              statusText + " " + geometryTypeText + " " + TARGET_COMPANY_NAME + " " +
+              (redmine && redmine.id ? redmine.id : "")
           };
 
           function focusItem() {
@@ -1668,9 +2013,12 @@
           addedCount++;
         });
 
-        console.log("Suvestinė:", {
+        console.log("Suvestine:", {
           gautaIsServiso: features.length,
           prideta: addedCount,
+          suRedmineNuoroda: withRedmine,
+          redmineFiltrasServeryje: redmineFilterServerSide,
+          skippedNoRedmine: skippedNoRedmine,
           skippedCompany: skippedCompany,
           skippedEnvironment: skippedEnvironment,
           skippedExcludedStatus: skippedExcludedStatus,
